@@ -16,6 +16,21 @@ from qumidi.errors import QuError
 from qumidi.protocol import constants as c
 
 
+async def cmd_set(args: argparse.Namespace) -> int:
+    from qumidi.protocol.channels import parse_channel_ref
+
+    async with AsyncQuMixer(args.host, port=args.port) as mixer:
+        await mixer.wait_synced()
+        ch = parse_channel_ref(args.channel)
+        if args.param == "mute":
+            muted = args.value.lower() in ("on", "1", "true", "yes", "mute")
+            await mixer.mute(ch, muted)
+            print(f"{ch.label}: mute {'on' if muted else 'off'}")
+            return 0
+        print(f"error: unknown parameter {args.param!r}", file=sys.stderr)
+        return 2
+
+
 async def cmd_probe(args: argparse.Namespace) -> int:
     async with AsyncQuMixer(args.host, port=args.port) as mixer:
         await mixer.wait_synced()
@@ -28,15 +43,33 @@ async def cmd_probe(args: argparse.Namespace) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    ap = argparse.ArgumentParser(prog="qumidi", description="Allen & Heath Qu control")
-    ap.add_argument("-v", "--verbose", action="store_true", help="debug logging")
-    ap.add_argument("--wire", action="store_true", help="hex-dump all MIDI traffic")
+    # -v/--wire are accepted both before and after the subcommand (e.g. both
+    # `qumidi --wire set ...` and `qumidi set ... --wire` work): argparse
+    # hands every token after the subcommand name to that subparser alone, so
+    # each subparser needs its own copy of these flags via `parents=`.
+    common = argparse.ArgumentParser(add_help=False)
+    common.add_argument("-v", "--verbose", action="store_true", help="debug logging")
+    common.add_argument("--wire", action="store_true", help="hex-dump all MIDI traffic")
+
+    ap = argparse.ArgumentParser(
+        prog="qumidi", description="Allen & Heath Qu control", parents=[common]
+    )
     sub = ap.add_subparsers(dest="command", required=True)
 
-    probe = sub.add_parser("probe", help="connect, report model/firmware/channel, disconnect")
+    probe = sub.add_parser(
+        "probe", parents=[common], help="connect, report model/firmware/channel, disconnect"
+    )
     probe.add_argument("--host", required=True)
     probe.add_argument("--port", type=int, default=c.QU_TCP_PORT)
     probe.set_defaults(func=cmd_probe)
+
+    setp = sub.add_parser("set", parents=[common], help="write one parameter and exit")
+    setp.add_argument("--host", required=True)
+    setp.add_argument("--port", type=int, default=c.QU_TCP_PORT)
+    setp.add_argument("param", help="parameter name, e.g. mute")
+    setp.add_argument("channel", help="channel reference, e.g. input:6, mix:3, lr")
+    setp.add_argument("value", help="value, e.g. on/off")
+    setp.set_defaults(func=cmd_set)
 
     return ap
 

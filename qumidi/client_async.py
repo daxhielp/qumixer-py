@@ -11,12 +11,13 @@ import asyncio
 import logging
 from types import TracebackType
 
-from qumidi.errors import QuConnectionError, SyncTimeoutError
-from qumidi.midi.messages import MidiMessage, SysEx
+from qumidi.errors import NotSyncedError, QuConnectionError, SyncTimeoutError
+from qumidi.midi.messages import MidiMessage, NoteOn, SysEx
 from qumidi.protocol import constants as c
-from qumidi.protocol.channels import Model, ModelCaps, caps_for_box_id
+from qumidi.protocol.channels import ChannelId, Model, ModelCaps, caps_for_box_id, check_channel
 from qumidi.protocol.sysex import QuSysex, get_system_state, parse_sysex, parse_system_state_reply
 from qumidi.transport.base import ConnectionState, Transport
+from qumidi.transport.queue import OutboundQueue
 from qumidi.transport.tcp import TcpTransport
 
 log = logging.getLogger(__name__)
@@ -40,6 +41,7 @@ class AsyncQuMixer:
         reply_timeout: float = c.REPLY_TIMEOUT,
         sync_timeout: float = c.SYNC_TIMEOUT,
         transport: Transport | None = None,
+        max_send_rate: int | None = c.MAX_SEND_RATE,
     ) -> None:
         self.host = host
         self.port = port
@@ -48,6 +50,7 @@ class AsyncQuMixer:
         self.sync_timeout = sync_timeout
 
         self._transport = transport if transport is not None else TcpTransport(host, port)
+        self._outbound = OutboundQueue(self._transport.send, max_send_rate=max_send_rate)
         self._reader_task: asyncio.Task[None] | None = None
         self._reply_event = asyncio.Event()
         self._sync_event = asyncio.Event()
@@ -101,6 +104,7 @@ class AsyncQuMixer:
     async def connect(self) -> None:
         await self._transport.connect()
         self._reader_task = asyncio.create_task(self._read_loop(), name="qumidi-client-read")
+        await self._outbound.start()
         try:
             await self._sync()
         except BaseException:
@@ -122,6 +126,7 @@ class AsyncQuMixer:
             except Exception:
                 log.exception("client read loop raised while closing")
             self._reader_task = None
+        await self._outbound.stop()
         await self._transport.close()
 
     async def __aenter__(self) -> AsyncQuMixer:  # noqa: PYI034 -- typing.Self needs py311+
@@ -163,6 +168,69 @@ class AsyncQuMixer:
                 f"marker within {self.sync_timeout}s; the state push failed"
             ) from exc
         self._transport.set_state(ConnectionState.READY)
+
+    # -- writes -------------------------------------------------------------
+
+    @property
+    def pending_writes(self) -> int:
+        """Payloads queued for the console but not yet on the wire (PRD 4.5)."""
+        return self._outbound.pending
+
+    def _require_synced(self, what: str) -> int:
+        """Return the console's MIDI channel, or explain why we cannot write."""
+        if self._midi_channel is None:
+            raise NotSyncedError(
+                f"cannot {what} before sync: the console's MIDI channel is not yet "
+                f"known. Await connect()/wait_synced() first."
+            )
+        return self._midi_channel
+
+    async def _await_channel(self, what: str) -> int:
+        """Wait for the ``11`` reply if a connect is in flight, then return N.
+
+        PRD 11.1 says writes before sync are queued and flushed once the reply
+        establishes N; PRD 11.3 says NotSyncedError is raised for a write
+        needing N before sync. Those reconcile as: if a connect is running,
+        wait for it (the write queues); if no connect was ever started, raise,
+        because there is nothing to wait for.
+
+        A write issued this way is transmitted *after* the state burst (the
+        write only enters the outbound queue once N is known, and the state
+        burst is already in flight or complete by then), so it will appear to
+        "win" over the console's own state.
+        """
+        if self._midi_channel is not None:
+            return self._midi_channel
+        if self._reader_task is None:
+            raise NotSyncedError(f"cannot {what}: not connected. Await connect() first.")
+        try:
+            await asyncio.wait_for(self._reply_event.wait(), timeout=self.reply_timeout)
+        except asyncio.TimeoutError as exc:
+            raise NotSyncedError(
+                f"cannot {what}: no system-state reply from {self.host}:{self.port} within "
+                f"{self.reply_timeout}s while a connect was in progress"
+            ) from exc
+        return self._require_synced(what)
+
+    async def _send(self, data: bytes) -> None:
+        """The single funnel for every control write (PRD 4.5)."""
+        await self._outbound.send(data)
+
+    async def mute(self, ch: ChannelId, muted: bool) -> None:
+        """Mute or unmute a channel (PRD 7.2).
+
+        Mute is Note On/Off, not NRPN. DCA masters (0x10-0x13) and mute-group
+        masters (0x50-0x53) are muted exactly the same way -- firing a mute
+        group has no dedicated message.
+        """
+        n = await self._await_channel(f"mute {ch.label}")
+        check_channel(self._caps, ch)
+        velocity = 0x7F if muted else 0x3F
+        payload = (
+            NoteOn(channel=n, note=ch.value, velocity=velocity).to_bytes()
+            + NoteOn(channel=n, note=ch.value, velocity=0x00).to_bytes()
+        )
+        await self._send(payload)
 
     # -- inbound ----------------------------------------------------------
 

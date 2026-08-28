@@ -12,7 +12,7 @@ import argparse
 import asyncio
 import logging
 
-from qumidi.midi.messages import SysEx
+from qumidi.midi.messages import NoteOn, SysEx
 from qumidi.midi.parser import MidiStreamParser
 from qumidi.protocol import constants as c
 from qumidi.protocol.sysex import build_sysex, parse_sysex
@@ -50,6 +50,7 @@ class FakeQu:
         self.port = 0
         self.connections = 0
         self.received = bytearray()
+        self.mutes: dict[int, bool] = {}
         self._server: asyncio.AbstractServer | None = None
         self._client: asyncio.StreamWriter | None = None
         self._tasks: set[asyncio.Task[None]] = set()
@@ -110,6 +111,13 @@ class FakeQu:
             pass
 
     async def _on_message(self, msg: object, writer: asyncio.StreamWriter) -> None:
+        if isinstance(msg, NoteOn):
+            # PRD 7.2 receive rule: velocity 00 and Note Off are ignored;
+            # 01-3F unmutes, 40-7F mutes.
+            if msg.velocity == 0x00:
+                return
+            self.mutes[msg.note] = msg.velocity >= 0x40
+            return
         if not isinstance(msg, SysEx):
             return
         parsed = parse_sysex(msg)
