@@ -10,12 +10,12 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from enum import Enum, auto
+from enum import IntEnum, auto
 
 from qumidi.errors import ParameterRangeError
 
 
-class ChannelClass(Enum):
+class ChannelClass(IntEnum):
     """One member per row of the PRD 6.1 channel table, plus two synthetics.
 
     MIX_MONO/MIX_STEREO/LR are deliberately separate: pan and delay behave
