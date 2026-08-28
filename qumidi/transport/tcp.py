@@ -130,10 +130,17 @@ class TcpTransport(Transport):
                         self._inbox.put_nowait(msg)
                     except asyncio.QueueFull:
                         log.warning("inbound queue full; dropping %r", msg)
+        except asyncio.CancelledError:
+            # close() cancels this task itself and reports DISCONNECTED; do
+            # not also report it here.
+            raise
         except (OSError, asyncio.IncompleteReadError) as exc:
             log.info("read loop ended: %s", exc)
-        except asyncio.CancelledError:
-            raise
+        except Exception:
+            # Any other failure mode still means the link is dead and the
+            # caller must be told -- never let an unanticipated exception
+            # type skip the state notification.
+            log.exception("read loop ended unexpectedly")
         self._on_link_down()
 
     async def _keepalive_loop(self) -> None:
