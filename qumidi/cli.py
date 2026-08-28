@@ -47,9 +47,24 @@ def build_parser() -> argparse.ArgumentParser:
     # `qumidi --wire set ...` and `qumidi set ... --wire` work): argparse
     # hands every token after the subcommand name to that subparser alone, so
     # each subparser needs its own copy of these flags via `parents=`.
+    #
+    # default=SUPPRESS on both is required, not cosmetic: _SubParsersAction
+    # parses the subcommand's tokens into a *fresh* sub-namespace and then
+    # copies every one of its attributes onto the outer namespace. Without
+    # SUPPRESS, an unset flag on the subparser still defaults to False there
+    # and clobbers a True the top-level parse just set for a pre-subcommand
+    # `--wire`. With SUPPRESS, the subparser's namespace only carries the
+    # attribute when the flag actually appeared among the subcommand's own
+    # tokens, so a value set at either level survives -- and main() must
+    # therefore read both via getattr(), since the attribute can end up
+    # missing from the final namespace entirely when neither level sets it.
     common = argparse.ArgumentParser(add_help=False)
-    common.add_argument("-v", "--verbose", action="store_true", help="debug logging")
-    common.add_argument("--wire", action="store_true", help="hex-dump all MIDI traffic")
+    common.add_argument(
+        "-v", "--verbose", action="store_true", default=argparse.SUPPRESS, help="debug logging"
+    )
+    common.add_argument(
+        "--wire", action="store_true", default=argparse.SUPPRESS, help="hex-dump all MIDI traffic"
+    )
 
     ap = argparse.ArgumentParser(
         prog="qumidi", description="Allen & Heath Qu control", parents=[common]
@@ -76,11 +91,14 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    # `wire`/`verbose` may be entirely absent from the namespace (SUPPRESS
+    # default -- see build_parser()) when neither the top-level nor the
+    # subcommand tokens set them.
     logging.basicConfig(
-        level=logging.DEBUG if args.verbose else logging.WARNING,
+        level=logging.DEBUG if getattr(args, "verbose", False) else logging.WARNING,
         format="%(levelname)s %(name)s: %(message)s",
     )
-    if args.wire:
+    if getattr(args, "wire", False):
         logging.getLogger("qumidi.wire").setLevel(logging.DEBUG)
     try:
         result: int = asyncio.run(args.func(args))
