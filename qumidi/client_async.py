@@ -84,7 +84,16 @@ class AsyncQuMixer:
     async def connect(self) -> None:
         await self._transport.connect()
         self._reader_task = asyncio.create_task(self._read_loop(), name="qumidi-client-read")
-        await self._sync()
+        try:
+            await self._sync()
+        except BaseException:
+            # PRD: the Qu permits exactly one TCP MIDI connection at a time.
+            # A sync failure (no reply / no end marker) must not leak this
+            # connection -- __aenter__ raising skips __aexit__ entirely under
+            # `async with`, so connect() must clean up after itself rather
+            # than relying on the caller to also call close().
+            await self.close()
+            raise
 
     async def close(self) -> None:
         if self._reader_task is not None:

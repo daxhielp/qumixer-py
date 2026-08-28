@@ -40,11 +40,18 @@ async def test_no_reply_at_all_raises_connection_error_naming_the_limit(fake_qu_
     server = await asyncio.start_server(_accept, "127.0.0.1", 0)
     port = int(server.sockets[0].getsockname()[1])
     try:
+        before = len(asyncio.all_tasks())
         mixer = AsyncQuMixer("127.0.0.1", port=port, reply_timeout=0.3)
         with pytest.raises(QuConnectionError) as excinfo:
             await mixer.connect()
         assert "one" in str(excinfo.value).lower()
-        await mixer.close()
+        # connect() itself must clean up on failure -- __aenter__ raising
+        # skips __aexit__ under `async with`, so nothing else would call
+        # close() for a caller using that form. Check this *before* our own
+        # explicit close() below, so a leak in connect() isn't masked by it.
+        await asyncio.sleep(0.05)
+        assert len(asyncio.all_tasks()) <= before
+        await mixer.close()  # idempotent; mirrors a caller that always closes
     finally:
         for writer in accepted:
             writer.close()
@@ -55,10 +62,14 @@ async def test_no_reply_at_all_raises_connection_error_naming_the_limit(fake_qu_
 async def test_reply_but_no_end_marker_raises_sync_timeout(fake_qu_factory) -> None:  # type: ignore[no-untyped-def]
     # PRD 9.3.9: a 11 but no 14 is a *different* failure and must say so.
     fake = await fake_qu_factory(send_end_marker=False)
+    before = len(asyncio.all_tasks())
     mixer = AsyncQuMixer("127.0.0.1", port=fake.port, sync_timeout=0.4)
     with pytest.raises(SyncTimeoutError):
         await mixer.connect()
-    await mixer.close()
+    # Same leak check as above, for the other sync-failure path.
+    await asyncio.sleep(0.05)
+    assert len(asyncio.all_tasks()) <= before
+    await mixer.close()  # idempotent; mirrors a caller that always closes
 
 
 async def test_context_manager_closes_cleanly(fake_qu_factory) -> None:  # type: ignore[no-untyped-def]
