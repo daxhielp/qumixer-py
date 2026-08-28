@@ -10,9 +10,9 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from enum import IntEnum, auto
+from enum import Enum, IntEnum, auto
 
-from qumidi.errors import ParameterRangeError
+from qumidi.errors import ParameterRangeError, UnsupportedOnModelError
 
 
 class ChannelClass(IntEnum):
@@ -194,3 +194,128 @@ def parse_channel_ref(text: str) -> ChannelId:
         return factory(int(arg))
     except ValueError:
         raise ParameterRangeError(f"channel number in {text!r} must be an integer") from None
+
+
+# --- Model capabilities (PRD 6.2) ----------------------------------------
+
+import logging  # grouped with the model section for readability
+
+_log = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class ModelCaps:
+    """Counts, not booleans (PRD 6.2).
+
+    ``mono_mixes``/``stereo_mixes``/``groups``/``matrices`` are *stereo pair*
+    counts matching the channel-id table: mono_mixes=4, stereo_mixes=3 is the
+    seven channel ids covering "Mix 1 to 10", not ten.
+    """
+
+    name: str
+    box_id: int
+    mono_inputs: int
+    stereo_inputs: int
+    mono_mixes: int
+    stereo_mixes: int
+    groups: int
+    matrices: int
+    fx_units: int
+    #: True where the count is inferred rather than verified on hardware.
+    groups_provisional: bool = False
+
+
+class Model(Enum):
+    QU16 = 1
+    QU24 = 2
+    QU32 = 3
+    QUPAC = 4
+    QUSB = 5
+
+    @property
+    def box_id(self) -> int:
+        return int(self.value)
+
+    @classmethod
+    def from_box_id(cls, box_id: int) -> Model | None:
+        try:
+            return cls(box_id)
+        except ValueError:
+            return None
+
+
+CAPS_BY_BOX_ID: dict[int, ModelCaps] = {
+    1: ModelCaps("Qu-16", 1, 16, 3, 4, 3, 0, 0, 2),
+    # PRD 6.2 dagger note: the 2 is inferred from the meter block table while
+    # the channel-id table implies 4. M6 hardware item; provisional until then.
+    2: ModelCaps("Qu-24", 2, 24, 3, 4, 3, 2, 2, 4, groups_provisional=True),
+    3: ModelCaps("Qu-32", 3, 32, 3, 4, 3, 4, 2, 4),
+    4: ModelCaps("Qu-Pac", 4, 32, 3, 4, 3, 4, 2, 4),
+    5: ModelCaps("Qu-SB", 5, 32, 3, 4, 3, 4, 2, 4),
+}
+
+#: Used before sync and for unrecognised BoxIDs (PRD 6.2).
+PERMISSIVE_CAPS = ModelCaps("unknown", -1, 32, 3, 4, 3, 4, 2, 4, groups_provisional=True)
+
+
+def caps_for_box_id(box_id: int) -> ModelCaps:
+    """Resolve a BoxID, falling back permissively for unrecognised consoles."""
+    caps = CAPS_BY_BOX_ID.get(box_id)
+    if caps is None:
+        _log.warning(
+            "unrecognised BoxID %d; falling back to the permissive capability set. "
+            "Refusing to connect to hardware that would otherwise work is the worse failure.",
+            box_id,
+        )
+        return PERMISSIVE_CAPS
+    return caps
+
+
+def _limit(caps: ModelCaps, ch: ChannelId) -> tuple[int, bool]:
+    """Return (max valid 1-based index for this class, is_provisional)."""
+    if ch.cls is ChannelClass.INPUT:
+        return caps.mono_inputs, False
+    if ch.cls is ChannelClass.STEREO_INPUT:
+        return caps.stereo_inputs, False
+    if ch.cls is ChannelClass.MIX_MONO:
+        return caps.mono_mixes, False
+    if ch.cls is ChannelClass.MIX_STEREO:
+        return caps.stereo_mixes, False
+    if ch.cls is ChannelClass.GROUP:
+        return caps.groups, caps.groups_provisional
+    if ch.cls is ChannelClass.MATRIX:
+        return caps.matrices, False
+    if ch.cls in (ChannelClass.FX_SEND, ChannelClass.FX_RETURN):
+        return caps.fx_units, False
+    # DCA, mute group, LR and the synthetics exist on every model.
+    return ch.index, False
+
+
+def check_channel(caps: ModelCaps | None, ch: ChannelId) -> None:
+    """Raise UnsupportedOnModelError if ``ch`` does not exist on this model.
+
+    Before sync (``caps is None``) checks are permissive with a warning, and a
+    provisional count warns rather than raising (PRD 6.2).
+    """
+    if caps is None:
+        _log.warning(
+            "capability check for %s ran before sync; permitting it. Call "
+            "wait_synced() first to get a real check.",
+            ch.label,
+        )
+        return
+    limit, provisional = _limit(caps, ch)
+    if ch.index <= limit:
+        return
+    message = (
+        f"{ch.label} does not exist on {caps.name} "
+        f"(this model has {limit} of that channel class)"
+    )
+    if provisional:
+        _log.warning(
+            "%s -- but that count is provisional and unverified on hardware, so this is "
+            "permitted rather than refused (PRD 6.2)",
+            message,
+        )
+        return
+    raise UnsupportedOnModelError(message)

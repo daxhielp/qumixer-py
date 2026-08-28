@@ -79,3 +79,31 @@ async def test_context_manager_closes_cleanly(fake_qu_factory) -> None:  # type:
         await mixer.wait_synced()
     await asyncio.sleep(0.05)
     assert len(asyncio.all_tasks()) <= before
+
+
+async def test_probe_resolves_the_model(fake_qu_factory) -> None:  # type: ignore[no-untyped-def]
+    from qumidi.protocol.channels import Model
+
+    fake = await fake_qu_factory(model="qu16")
+    async with AsyncQuMixer("127.0.0.1", port=fake.port) as mixer:
+        await mixer.wait_synced()
+        assert mixer.model is Model.QU16
+        assert mixer.caps is not None and mixer.caps.mono_inputs == 16
+
+
+async def test_unknown_box_id_still_connects(fake_qu_factory, caplog) -> None:  # type: ignore[no-untyped-def]
+    fake = await fake_qu_factory(box_id=99)
+    async with AsyncQuMixer("127.0.0.1", port=fake.port) as mixer:
+        await mixer.wait_synced()
+        assert mixer.model is None
+        assert mixer.raw_box_id == 99
+        assert mixer.caps is not None  # permissive fallback
+
+
+async def test_firmware_below_the_floor_warns_but_connects(fake_qu_factory, caplog) -> None:  # type: ignore[no-untyped-def]
+    # PRD 6.2: do not raise, and do not silently pretend the registry applies.
+    fake = await fake_qu_factory(firmware=(1, 7))
+    async with AsyncQuMixer("127.0.0.1", port=fake.port) as mixer:
+        await mixer.wait_synced()
+        assert mixer.firmware == (1, 7)
+    assert any("1.9" in r.message for r in caplog.records)

@@ -14,6 +14,7 @@ from types import TracebackType
 from qumidi.errors import QuConnectionError, SyncTimeoutError
 from qumidi.midi.messages import MidiMessage, SysEx
 from qumidi.protocol import constants as c
+from qumidi.protocol.channels import Model, ModelCaps, caps_for_box_id
 from qumidi.protocol.sysex import QuSysex, get_system_state, parse_sysex, parse_system_state_reply
 from qumidi.transport.base import ConnectionState, Transport
 from qumidi.transport.tcp import TcpTransport
@@ -54,6 +55,7 @@ class AsyncQuMixer:
         self._box_id: int | None = None
         self._firmware: tuple[int, int] | None = None
         self._midi_channel: int | None = None
+        self._caps: ModelCaps | None = None
 
     # -- properties -------------------------------------------------------
 
@@ -64,6 +66,21 @@ class AsyncQuMixer:
     @property
     def firmware(self) -> tuple[int, int] | None:
         return self._firmware
+
+    @property
+    def raw_box_id(self) -> int | None:
+        """The BoxID byte exactly as reported, even when unrecognised."""
+        return self._box_id
+
+    @property
+    def model(self) -> Model | None:
+        """The detected model, or None for an unrecognised BoxID."""
+        return None if self._box_id is None else Model.from_box_id(self._box_id)
+
+    @property
+    def caps(self) -> ModelCaps | None:
+        """Capability counts for the detected model; None before sync."""
+        return self._caps
 
     @property
     def midi_channel(self) -> int | None:
@@ -190,6 +207,14 @@ class AsyncQuMixer:
         self._box_id = box_id
         self._firmware = firmware
         self._midi_channel = parsed.midi_channel
+        self._caps = caps_for_box_id(box_id)
+        if firmware < c.MIN_FIRMWARE:
+            # PRD 6.2: do not raise, and do not silently pretend the registry applies.
+            log.warning(
+                "console reports firmware %d.%d, below the documented floor %d.%d; "
+                "parameter coverage is unverified below that firmware",
+                firmware[0], firmware[1], c.MIN_FIRMWARE[0], c.MIN_FIRMWARE[1],
+            )
         # PRD 9.1: the 0-based -> 1-based conversion happens in exactly one
         # place (midi_channel_display); log messages reuse it rather than
         # recomputing +1 themselves.
