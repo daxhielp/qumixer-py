@@ -1,0 +1,94 @@
+# Golden vectors: expected wire bytes for registry parameters.
+#
+# TRANSCRIBED BY HAND FROM THE PRD SECTION 7.2 TABLES. Never regenerate this
+# file from the registry -- a fixture generated from the code under test
+# proves nothing. Its purpose is to catch a wrong VX filler byte or a
+# transposed NRPN id, which produce messages the mixer silently ignores.
+#
+# fields: param, channel (hex CH), value (hex), vx (hex or null),
+#         midi_channel (default 0), expected (space-separated hex bytes)
+
+- param: fader
+  channel: 0x25        # Input 6
+  value: 0x62          # 0 dB
+  vx: null
+  expected: "B0 63 25 B0 62 17 B0 06 62 B0 26 07"
+
+- param: fader
+  channel: 0x25
+  value: 0x00          # -inf
+  vx: null
+  expected: "B0 63 25 B0 62 17 B0 06 00 B0 26 07"
+
+- param: fader
+  channel: 0x67        # LR
+  value: 0x7F          # +10 dB
+  vx: null
+  expected: "B0 63 67 B0 62 17 B0 06 7F B0 26 07"
+
+- param: fader
+  channel: 0x25
+  value: 0x62
+  vx: null
+  midi_channel: 5      # non-zero N: B0 is the easy case, B5 is where a
+  expected: "B5 63 25 B5 62 17 B5 06 62 B5 26 07"   # hardcoded zero shows up
+
+- param: send_level
+  channel: 0x25
+  value: 0x50
+  vx: 0x02             # Mix 3
+  expected: "B0 63 25 B0 62 20 B0 06 50 B0 26 02"
+
+- param: send_level
+  channel: 0x25
+  value: 0x62
+  vx: 0x13             # FX Send 4 -- the top of the non-dense target table
+  expected: "B0 63 25 B0 62 20 B0 06 62 B0 26 13"
+
+- param: pan
+  channel: 0x25
+  value: 0x00          # full left
+  vx: 0x07             # LR
+  expected: "B0 63 25 B0 62 16 B0 06 00 B0 26 07"
+
+- param: pan
+  channel: 0x25
+  value: 0x25          # centre -- NOT 0x40 (PRD 14.9)
+  vx: 0x07
+  expected: "B0 63 25 B0 62 16 B0 06 25 B0 26 07"
+
+- param: pan
+  channel: 0x25
+  value: 0x4A          # full right -- the ceiling, not 0x7F
+  vx: 0x07
+  expected: "B0 63 25 B0 62 16 B0 06 4A B0 26 07"
+
+- param: lr_assign
+  channel: 0x25
+  value: 0x01
+  vx: null
+  expected: "B0 63 25 B0 62 18 B0 06 01 B0 26 07"
+
+- param: mix_assign
+  channel: 0x25
+  value: 0x01
+  vx: 0x02             # Mix 3
+  expected: "B0 63 25 B0 62 55 B0 06 01 B0 26 02"
+
+- param: mix_assign
+  channel: 0x25
+  value: 0x01
+  vx: 0x08             # Group 1-2
+  expected: "B0 63 25 B0 62 55 B0 06 01 B0 26 08"
+
+- param: mix_pre
+  channel: 0x25
+  value: 0x01          # pre
+  vx: 0x00             # Mix 1
+  expected: "B0 63 25 B0 62 50 B0 06 01 B0 26 00"
+
+- param: pafl
+  channel: 0x25
+  value: 0x01
+  vx: null
+  expected: "B0 63 25 B0 62 51 B0 06 01 B0 26 07"

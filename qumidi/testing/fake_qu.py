@@ -12,7 +12,8 @@ import argparse
 import asyncio
 import logging
 
-from qumidi.midi.messages import NoteOn, SysEx
+from qumidi.midi.messages import MidiMessage, NoteOn, SysEx
+from qumidi.midi.nrpn import NrpnDecoder, encode_nrpn
 from qumidi.midi.parser import MidiStreamParser
 from qumidi.protocol import constants as c
 from qumidi.protocol.sysex import build_sysex, parse_sysex
@@ -37,6 +38,7 @@ class FakeQu:
         send_end_marker: bool = True,
         sync_delay: float = 0.0,
         keepalive_interval: float = 0.3,
+        scene: dict[tuple[int, int, int], int] | None = None,
     ) -> None:
         self.model = model
         self.midi_channel = midi_channel
@@ -51,6 +53,11 @@ class FakeQu:
         self.connections = 0
         self.received = bytearray()
         self.mutes: dict[int, bool] = {}
+        #: keyed (ch, param_id, vx); seeded from ``scene`` and updated by
+        #: every inbound NRPN write.
+        self.state: dict[tuple[int, int, int], int] = dict(scene or {})
+        self._scene = dict(scene or {})
+        self._decoder = NrpnDecoder()
         self._server: asyncio.AbstractServer | None = None
         self._client: asyncio.StreamWriter | None = None
         self._tasks: set[asyncio.Task[None]] = set()
@@ -110,7 +117,18 @@ class FakeQu:
         except (asyncio.CancelledError, OSError):
             pass
 
-    async def _on_message(self, msg: object, writer: asyncio.StreamWriter) -> None:
+    async def _on_message(self, msg: MidiMessage, writer: asyncio.StreamWriter) -> None:
+        for update in self._decoder.feed(msg):
+            if update.vx is None:
+                continue
+            self.state[(update.ch, update.param_id, update.vx)] = update.value
+            if self.echo:
+                writer.write(
+                    encode_nrpn(
+                        self.midi_channel, update.ch, update.param_id, update.value, update.vx
+                    )
+                )
+                await writer.drain()
         if isinstance(msg, NoteOn):
             # PRD 7.2 receive rule: velocity 00 and Note Off are ignored;
             # 01-3F unmutes, 40-7F mutes.
@@ -142,8 +160,10 @@ class FakeQu:
             await writer.drain()
 
     async def _push_state(self, writer: asyncio.StreamWriter) -> None:
-        """Emit the canned scene as an NRPN burst. Filled in by Slice 3."""
-        return
+        """Emit the canned scene as an NRPN burst (PRD 9.3)."""
+        for (ch, param_id, vx), value in self._scene.items():
+            writer.write(encode_nrpn(self.midi_channel, ch, param_id, value, vx))
+        await writer.drain()
 
 
 def main() -> None:  # pragma: no cover - manual dev tool

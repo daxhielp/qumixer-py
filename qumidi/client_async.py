@@ -11,10 +11,19 @@ import asyncio
 import logging
 from types import TracebackType
 
-from qumidi.errors import NotSyncedError, QuConnectionError, SyncTimeoutError
+from qumidi.errors import (
+    NotSyncedError,
+    ParameterRangeError,
+    QuConnectionError,
+    ReadOnlyParameterError,
+    SyncTimeoutError,
+)
 from qumidi.midi.messages import MidiMessage, NoteOn, SysEx
+from qumidi.midi.nrpn import encode_nrpn
 from qumidi.protocol import constants as c
 from qumidi.protocol.channels import ChannelId, Model, ModelCaps, caps_for_box_id, check_channel
+from qumidi.protocol.params import Direction, Interpolated, ParamSpec, SendTarget
+from qumidi.protocol.registry import REGISTRY, send_target_vx
 from qumidi.protocol.sysex import QuSysex, get_system_state, parse_sysex, parse_system_state_reply
 from qumidi.transport.base import ConnectionState, Transport
 from qumidi.transport.queue import OutboundQueue
@@ -231,6 +240,80 @@ class AsyncQuMixer:
             + NoteOn(channel=n, note=ch.value, velocity=0x00).to_bytes()
         )
         await self._send(payload)
+
+    def encode(
+        self,
+        ch: ChannelId,
+        param: str,
+        raw: int,
+        vx: ChannelId | int | None = None,
+    ) -> bytes:
+        """Build the wire bytes for one parameter write, without sending.
+
+        Public so that the golden-vector tests and the CLI can exercise the
+        encoder without a socket.
+        """
+        n = self._require_synced(f"encode {param} for {ch.label}")
+        spec = REGISTRY.lookup(param, ch.cls)
+        if spec.direction is Direction.RX_ONLY:
+            raise ReadOnlyParameterError(
+                f"{ch.label} {spec.name} is receive-only ({spec.notes or 'PRD 7.1'}); "
+                f"writing it would emit bytes the mixer ignores"
+            )
+        check_channel(self._caps, ch)
+        vx_byte = self._resolve_vx(spec, vx)
+        value = spec.domain.validate_raw(raw, spec.name, ch.label)
+        return encode_nrpn(n, ch=ch.value, param_id=spec.nrpn_id, value=value, vx=vx_byte)
+
+    def _resolve_vx(self, spec: ParamSpec, vx: ChannelId | int | None) -> int:
+        if isinstance(spec.vx, SendTarget):
+            if isinstance(vx, ChannelId):
+                target_vx = send_target_vx(vx, self._caps)
+            elif isinstance(vx, int):
+                target_vx = vx
+            else:
+                raise ParameterRangeError(
+                    f"{spec.name} needs a send destination; pass vx=Mix.MIX3, "
+                    f"vx=Group(1), vx=Mix.LR and so on"
+                )
+            if spec.name == "mix_assign" and target_vx == 0x07:
+                # PRD 14.8: 55/07 is a syntactically valid second encoding for
+                # LR assignment, but only one is what the console listens to.
+                raise ParameterRangeError(
+                    "mix_assign to LR is ambiguous with lr_assign (PRD 14.8); "
+                    "use set(ch, 'lr_assign', ...) instead"
+                )
+            return spec.vx.validate(target_vx, spec.name)
+        if isinstance(vx, ChannelId):
+            raise ParameterRangeError(
+                f"{spec.name} does not take a send destination; its VX is not a target"
+            )
+        return spec.vx.validate(vx, spec.name)
+
+    async def set(
+        self,
+        ch: ChannelId,
+        param: str,
+        *,
+        raw: int | None = None,
+        db: float | None = None,
+        vx: ChannelId | int | None = None,
+    ) -> None:
+        """Write one parameter. Resolves once the bytes have been drained."""
+        if (raw is None) == (db is None):
+            raise ValueError("pass exactly one of raw= or db=")
+        spec = REGISTRY.lookup(param, ch.cls)
+        if db is not None:
+            if not isinstance(spec.domain, Interpolated):
+                raise ParameterRangeError(
+                    f"{ch.label} {spec.name} has no taper; pass raw= instead of db="
+                )
+            raw = spec.domain.to_raw(db)
+        assert raw is not None
+        # PRD 11.1: a write issued while a connect is in flight waits here for
+        # the 11 reply rather than being refused.
+        await self._await_channel(f"set {param} on {ch.label}")
+        await self._send(self.encode(ch, param, raw, vx))
 
     # -- inbound ----------------------------------------------------------
 

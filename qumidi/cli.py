@@ -27,8 +27,17 @@ async def cmd_set(args: argparse.Namespace) -> int:
             await mixer.mute(ch, muted)
             print(f"{ch.label}: mute {'on' if muted else 'off'}")
             return 0
-        print(f"error: unknown parameter {args.param!r}", file=sys.stderr)
-        return 2
+
+        vx = parse_channel_ref(args.to) if args.to else None
+        value = args.value.lower()
+        if value.endswith("db"):
+            await mixer.set(ch, args.param, db=float(value[:-2]), vx=vx)
+            print(f"{ch.label} {args.param}: {value[:-2]} dB")
+        else:
+            raw = int(value.removeprefix("raw:"), 0)
+            await mixer.set(ch, args.param, raw=raw, vx=vx)
+            print(f"{ch.label} {args.param}: raw {raw:#04x}")
+        return 0
 
 
 async def cmd_probe(args: argparse.Namespace) -> int:
@@ -83,7 +92,8 @@ def build_parser() -> argparse.ArgumentParser:
     setp.add_argument("--port", type=int, default=c.QU_TCP_PORT)
     setp.add_argument("param", help="parameter name, e.g. mute")
     setp.add_argument("channel", help="channel reference, e.g. input:6, mix:3, lr")
-    setp.add_argument("value", help="value, e.g. on/off")
+    setp.add_argument("value", help="value, e.g. on/off, -6db, raw:0x62")
+    setp.add_argument("--to", help="send destination for send parameters, e.g. mix:3, lr")
     setp.set_defaults(func=cmd_set)
 
     return ap
