@@ -117,6 +117,7 @@ def linear_taper(
     lo_raw: int = 0x00,
     hi_raw: int = 0x7F,
     unit: str = "dB",
+    verified: bool = False,
 ) -> Taper:
     """Build a linear taper, optionally anchored on an asymmetric centre.
 
@@ -126,8 +127,12 @@ def linear_taper(
     0x7F.
     """
     if centre_raw is None:
-        return Taper(points=((lo_raw, lo), (hi_raw, hi)), unit=unit)
-    return Taper(points=((lo_raw, lo), (centre_raw, centre), (hi_raw, hi)), unit=unit)
+        return Taper(points=((lo_raw, lo), (hi_raw, hi)), unit=unit, verified=verified)
+    return Taper(
+        points=((lo_raw, lo), (centre_raw, centre), (hi_raw, hi)),
+        unit=unit,
+        verified=verified,
+    )
 
 
 #: PRD 8.1. Shared by Fader (17) and Send Level (20) -- the same taper, and
@@ -188,16 +193,16 @@ DSNAKE_GAIN_TAPER = Taper(
 )
 
 #: PRD 8.4. Digital/stereo trim (52, 54): linear, -24..+24 dB, 0 dB = 0x40.
-TRIM_TAPER = linear_taper(-24.0, 24.0, centre_raw=0x40)
+TRIM_TAPER = linear_taper(-24.0, 24.0, centre_raw=0x40, verified=True)
 
 #: PRD 8.4. PEQ and GEQ gain: linear, -12..+12 dB, 0 dB = 0x40.
-PEQ_GAIN_TAPER = linear_taper(-12.0, 12.0, centre_raw=0x40)
-GEQ_GAIN_TAPER = linear_taper(-12.0, 12.0, centre_raw=0x40)
+PEQ_GAIN_TAPER = linear_taper(-12.0, 12.0, centre_raw=0x40, verified=True)
+GEQ_GAIN_TAPER = linear_taper(-12.0, 12.0, centre_raw=0x40, verified=True)
 
 #: PRD 7.2. Input channels: 0-85 ms across 0x00-0x40. Half-scale.
-INPUT_DELAY_TAPER = linear_taper(0.0, 85.0, hi_raw=0x40, unit="ms")
+INPUT_DELAY_TAPER = linear_taper(0.0, 85.0, hi_raw=0x40, unit="ms", verified=True)
 #: PRD 7.2. Mix/group/matrix: 0-170 ms across 0x00-0x7F.
-MIX_DELAY_TAPER = linear_taper(0.0, 170.0, unit="ms")
+MIX_DELAY_TAPER = linear_taper(0.0, 170.0, unit="ms", verified=True)
 
 # --- Unverified curves (PRD 8.4) -----------------------------------------
 # The spec gives endpoints only. These are best-effort and are the main thing

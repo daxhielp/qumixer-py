@@ -164,6 +164,20 @@ def test_trim_and_peq_gain_are_centred_on_0x40() -> None:
         assert taper.to_raw(0.0) == 0x40
 
 
+def test_accurate_linear_tapers_are_marked_verified() -> None:
+    # PRD 8.4: trim, PEQ/GEQ gain and the delay tapers are stated as linear
+    # in the spec, not endpoint-only guesses -- they must not be lumped in
+    # with the genuinely unverified log-interpolated curves.
+    for taper in (
+        TRIM_TAPER,
+        PEQ_GAIN_TAPER,
+        GEQ_GAIN_TAPER,
+        INPUT_DELAY_TAPER,
+        MIX_DELAY_TAPER,
+    ):
+        assert taper.verified is True
+
+
 def test_input_delay_is_half_scale_against_mix_delay() -> None:
     # PRD 7.2: the input-channel range is half-scale, or the ms helper is
     # wrong by 2x on inputs.
