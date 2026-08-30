@@ -35,6 +35,7 @@ from qumidi.protocol.params import (
     DsnakeSocket,
     EnumDomain,
     Fixed,
+    FlaggedIndex,
     FxTap,
     GeqBand,
     Interpolated,
@@ -427,6 +428,18 @@ SPECS: list[ParamSpec] = [
               applies_to=frozenset({ChannelClass.FX_SEND}), tier=Tier.EXPERIMENTAL,
               notes="Shares id 0x48 with fx_delay_coarse (PRD 14.5). 0x00 unlinked, "
               "0x7F linked."),
+
+    # --- Assigns (PRD 7.2, 14.2, 14.10). Set-valued: the group index lives in
+    # the VALUE, not in VX. See PRD 10.1a for the cache consequence. ---
+    ParamSpec(name="dca_assign", nrpn_id=0x40, vx=Fixed(0x07),
+              domain=FlaggedIndex(on_flag=0x40, count=4),
+              applies_to=_SEND_SOURCES,
+              notes="0x00-0x03 off group 1-4, 0x40-0x43 on. PRD 14.2: the spec labels "
+              "this row 'Mute Grp' -- that is a copy-paste error; the encoding is right."),
+    ParamSpec(name="mute_group_assign", nrpn_id=0x5C, vx=Fixed(0x07),
+              domain=FlaggedIndex(on_flag=0x40, count=4),
+              applies_to=_SEND_SOURCES,
+              notes="0x00-0x03 off group 1-4, 0x40-0x43 on."),
 ]
 
 

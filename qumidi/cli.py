@@ -17,7 +17,7 @@ from qumidi.protocol import constants as c
 
 
 async def cmd_set(args: argparse.Namespace) -> int:
-    from qumidi.protocol.channels import parse_channel_ref
+    from qumidi.protocol.channels import ChannelId, parse_channel_ref
 
     async with AsyncQuMixer(args.host, port=args.port) as mixer:
         await mixer.wait_synced()
@@ -28,7 +28,16 @@ async def cmd_set(args: argparse.Namespace) -> int:
             print(f"{ch.label}: mute {'on' if muted else 'off'}")
             return 0
 
-        vx = parse_channel_ref(args.to) if args.to else None
+        # --to (a channel reference, e.g. mix:3) resolves through SendTarget;
+        # --to-band (a plain integer, e.g. 15) is geq_gain's GeqBand VX mode --
+        # a raw band index, never a ChannelId. A parameter takes one VX mode
+        # or the other, never both, so the two flags are mutually exclusive.
+        if args.to:
+            vx: ChannelId | int | None = parse_channel_ref(args.to)
+        elif args.to_band is not None:
+            vx = args.to_band
+        else:
+            vx = None
         value = args.value.lower()
         if value.endswith("db"):
             await mixer.set(ch, args.param, db=float(value[:-2]), vx=vx)
@@ -163,7 +172,11 @@ def build_parser() -> argparse.ArgumentParser:
     setp.add_argument("param", help="parameter name, e.g. mute")
     setp.add_argument("channel", help="channel reference, e.g. input:6, mix:3, lr")
     setp.add_argument("value", help="value, e.g. on/off, -6db, raw:0x62")
-    setp.add_argument("--to", help="send destination for send parameters, e.g. mix:3, lr")
+    dest_group = setp.add_mutually_exclusive_group()
+    dest_group.add_argument("--to", help="send destination for send parameters, e.g. mix:3, lr")
+    dest_group.add_argument(
+        "--to-band", type=int, help="GEQ band index for geq_gain, e.g. 15"
+    )
     setp.set_defaults(func=cmd_set)
 
     mon = sub.add_parser(
