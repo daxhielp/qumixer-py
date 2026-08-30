@@ -48,6 +48,40 @@ async def test_max_attempts_gives_up_instead_of_spinning_forever() -> None:
     await t.close()
 
 
+async def test_max_attempts_gives_up_after_repeated_reconnect_failures(fake_qu_factory) -> None:  # type: ignore[no-untyped-def]
+    # test_max_attempts_gives_up_instead_of_spinning_forever above only
+    # exercises _open()'s own except-clause on a *first* connect that fails
+    # immediately -- that path never reaches _reconnect_loop at all, so it
+    # gives no coverage of the loop's own exhaustion logic. This drives the
+    # loop for real: connect successfully, then take the server down
+    # entirely, so the link drop schedules a reconnect (RECONNECTING) and
+    # every subsequent reconnect *attempt* -- not just the first connect --
+    # genuinely fails against now-nothing listening on that port. The loop
+    # must give up after exactly max_reconnect_attempts of those and land on
+    # DISCONNECTED, with no task left running.
+    fake = await fake_qu_factory()
+    before = len(asyncio.all_tasks())
+    states: list[ConnectionState] = []
+    t = TcpTransport(
+        "127.0.0.1", port=fake.port, connect_timeout=0.5,
+        auto_reconnect=True, reconnect_backoff_min=0.02, max_reconnect_attempts=2,
+    )
+    t.on_state_change(states.append)
+    await t.connect()
+    assert t.is_connected
+    await fake.stop()  # drops the link *and* leaves the port unreachable
+    for _ in range(200):
+        await asyncio.sleep(0.02)
+        if states and states[-1] is ConnectionState.DISCONNECTED:
+            break
+    assert ConnectionState.RECONNECTING in states
+    assert states[-1] is ConnectionState.DISCONNECTED
+    assert not t.is_connected
+    await t.close()
+    await asyncio.sleep(0.05)
+    assert len(asyncio.all_tasks()) <= before
+
+
 async def test_close_during_backoff_does_not_resurrect_the_connection(fake_qu_factory) -> None:  # type: ignore[no-untyped-def]
     # PRD 4.4: a user-initiated close must not race with a pending backoff
     # timer. PRD 16.16.
