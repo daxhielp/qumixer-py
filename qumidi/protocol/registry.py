@@ -27,11 +27,15 @@ from qumidi.protocol.channels import (
     check_channel,
 )
 from qumidi.protocol.params import (
+    FX_TAP_LEFT,
+    FX_TAP_LINK,
+    FX_TAP_RIGHT,
     Boolean,
     Direction,
     DsnakeSocket,
     EnumDomain,
     Fixed,
+    FxTap,
     GeqBand,
     Interpolated,
     ParamSpec,
@@ -40,12 +44,24 @@ from qumidi.protocol.params import (
     Tier,
 )
 from qumidi.protocol.units import (
+    COMP_ATTACK_TAPER,
+    COMP_RATIO_TAPER,
+    COMP_RELEASE_TAPER,
+    COMP_THRESHOLD_TAPER,
     DSNAKE_GAIN_TAPER,
     FADER_TAPER,
     FREQ_TAPER,
+    GATE_ATTACK_TAPER,
+    GATE_DEPTH_TAPER,
+    GATE_HOLD_TAPER,
+    GATE_RELEASE_TAPER,
+    GATE_THRESHOLD_TAPER,
     GEQ_GAIN_TAPER,
     HPF_TAPER,
+    INPUT_DELAY_TAPER,
     LOCAL_GAIN_TAPER,
+    MAKEUP_TAPER,
+    MIX_DELAY_TAPER,
     PEQ_GAIN_TAPER,
     TRIM_TAPER,
     WIDTH_TAPER,
@@ -116,6 +132,8 @@ _SEND_SOURCES = _INPUTS | _FX_RETURNS | frozenset(
 )
 #: PEQ/HPF live on inputs, FX returns and mixes -- not DCAs.
 _EQ_CLASSES = _INPUTS | _FX_RETURNS | _MIXES
+#: Gate and compressor live on inputs and mixes -- not DCAs (PRD 7.2).
+_DYNAMICS_CLASSES = _INPUTS | _MIXES
 
 #: PRD 7.2: 28 bands, index 0x00-0x1B. 0-based throughout, matching the wire
 #: encoding. Band 14 is 800 Hz and band 15 is 1 kHz (PRD 11.1).
@@ -139,6 +157,11 @@ def geq_band_for_freq(hz: float) -> int:
 
 
 _PEQ_TYPE = EnumDomain({0x00: "bell", 0x06: "shelf"})
+_COMP_TYPE = EnumDomain({
+    0x00: "manual_rms", 0x01: "auto_slow_opto",
+    0x02: "auto_punchbag", 0x03: "manual_peak",
+})
+_KNEE = EnumDomain({0x00: "hard", 0x01: "soft"})
 
 
 SPECS: list[ParamSpec] = [
@@ -332,6 +355,78 @@ SPECS: list[ParamSpec] = [
               notes="28 bands, index 0x00-0x1B. Band 15 is 1 kHz (PRD 11.1)."),
     ParamSpec(name="geq_in", nrpn_id=0x71, vx=Fixed(0x00), domain=Boolean(),
               applies_to=_MIXES, notes="VX is 0x00 here, not 0x07."),
+
+    # --- Gate (PRD 7.2). gate_in uses VX 0x00. ---
+    ParamSpec(name="gate.attack", nrpn_id=0x41, vx=Fixed(0x07),
+              domain=Interpolated(lo=0x00, hi=0x7F, taper=GATE_ATTACK_TAPER),
+              applies_to=_INPUTS, notes="50 us - 300 ms, curve unverified (PRD 8.4)."),
+    ParamSpec(name="gate.release", nrpn_id=0x42, vx=Fixed(0x07),
+              domain=Interpolated(lo=0x00, hi=0x7F, taper=GATE_RELEASE_TAPER),
+              applies_to=_INPUTS, notes="10 ms - 1 s, curve unverified."),
+    ParamSpec(name="gate.hold", nrpn_id=0x43, vx=Fixed(0x07),
+              domain=Interpolated(lo=0x00, hi=0x7F, taper=GATE_HOLD_TAPER),
+              applies_to=_INPUTS, notes="10 ms - 5 s, curve unverified."),
+    ParamSpec(name="gate.threshold", nrpn_id=0x44, vx=Fixed(0x07),
+              domain=Interpolated(lo=0x00, hi=0x7F, taper=GATE_THRESHOLD_TAPER),
+              applies_to=_INPUTS),
+    ParamSpec(name="gate.depth", nrpn_id=0x45, vx=Fixed(0x07),
+              domain=Interpolated(lo=0x00, hi=0x7F, taper=GATE_DEPTH_TAPER),
+              applies_to=_INPUTS),
+    ParamSpec(name="gate_in", nrpn_id=0x46, vx=Fixed(0x00), domain=Boolean(),
+              applies_to=_INPUTS, notes="VX is 0x00 here, not 0x07."),
+
+    # --- Compressor (PRD 7.2). comp_in uses VX 0x00. ---
+    ParamSpec(name="comp.type", nrpn_id=0x61, vx=Fixed(0x07), domain=_COMP_TYPE,
+              applies_to=_DYNAMICS_CLASSES),
+    ParamSpec(name="comp.attack", nrpn_id=0x62, vx=Fixed(0x07),
+              domain=Interpolated(lo=0x00, hi=0x7F, taper=COMP_ATTACK_TAPER),
+              applies_to=_DYNAMICS_CLASSES, notes="300 us - 300 ms, curve unverified."),
+    ParamSpec(name="comp.release", nrpn_id=0x63, vx=Fixed(0x07),
+              domain=Interpolated(lo=0x00, hi=0x7F, taper=COMP_RELEASE_TAPER),
+              applies_to=_DYNAMICS_CLASSES, notes="100 ms - 2 s, curve unverified."),
+    ParamSpec(name="comp.knee", nrpn_id=0x64, vx=Fixed(0x07), domain=_KNEE,
+              applies_to=_DYNAMICS_CLASSES),
+    ParamSpec(name="comp.ratio", nrpn_id=0x65, vx=Fixed(0x07),
+              domain=Interpolated(lo=0x00, hi=0x7F, taper=COMP_RATIO_TAPER),
+              applies_to=_DYNAMICS_CLASSES, notes="1:1 to inf; 2.6:1 = 0x50."),
+    ParamSpec(name="comp.threshold", nrpn_id=0x66, vx=Fixed(0x07),
+              domain=Interpolated(lo=0x00, hi=0x7F, taper=COMP_THRESHOLD_TAPER),
+              applies_to=_DYNAMICS_CLASSES),
+    ParamSpec(name="comp.makeup", nrpn_id=0x67, vx=Fixed(0x07),
+              domain=Interpolated(lo=0x00, hi=0x7F, taper=MAKEUP_TAPER),
+              applies_to=_DYNAMICS_CLASSES),
+    ParamSpec(name="comp_in", nrpn_id=0x68, vx=Fixed(0x00), domain=Boolean(),
+              applies_to=_DYNAMICS_CLASSES, notes="VX is 0x00 here, not 0x07."),
+
+    # --- Delay (PRD 7.2). Registered twice: the input range is half-scale, or
+    # the ms helper is wrong by 2x on inputs. ---
+    ParamSpec(name="delay_time", nrpn_id=0x6C, vx=Fixed(0x07),
+              domain=Interpolated(lo=0x00, hi=0x40, taper=INPUT_DELAY_TAPER),
+              applies_to=_INPUTS,
+              notes="Inputs: 0-85 ms across 0x00-0x40. Writing 0x41-0x7F here is a "
+              "ParameterRangeError; receiving it clamps to 0x40 (PRD 7.2)."),
+    ParamSpec(name="delay_time", nrpn_id=0x6C, vx=Fixed(0x07),
+              domain=Interpolated(lo=0x00, hi=0x7F, taper=MIX_DELAY_TAPER),
+              applies_to=_MIXES,
+              notes="Mix/group/matrix: 0-170 ms across 0x00-0x7F. Linear."),
+    ParamSpec(name="delay_in", nrpn_id=0x6D, vx=Fixed(0x00), domain=Boolean(),
+              applies_to=_INPUTS | _MIXES, notes="VX is 0x00 here, not 0x07."),
+
+    # --- FX delay (PRD 7.2, 14.5). Experimental. ---
+    ParamSpec(name="fx_delay_fine", nrpn_id=0x49, vx=FxTap(),
+              domain=Raw7Bit(), applies_to=frozenset({ChannelClass.FX_SEND}),
+              tier=Tier.EXPERIMENTAL,
+              notes="LSB. For fine resolution send this BEFORE the coarse MSB (PRD 7.2)."),
+    ParamSpec(name="fx_delay_coarse", nrpn_id=0x48, vx=FxTap(),
+              domain=Raw7Bit(), applies_to=frozenset({ChannelClass.FX_SEND}),
+              tier=Tier.EXPERIMENTAL,
+              notes="MSB. Shares id 0x48 with fx_delay_link, discriminated only by VX "
+              "(PRD 14.5): 0x05 left, 0x07 right."),
+    ParamSpec(name="fx_delay_link", nrpn_id=0x48, vx=Fixed(0x06),
+              domain=Boolean(off=0x00, on=0x7F),
+              applies_to=frozenset({ChannelClass.FX_SEND}), tier=Tier.EXPERIMENTAL,
+              notes="Shares id 0x48 with fx_delay_coarse (PRD 14.5). 0x00 unlinked, "
+              "0x7F linked."),
 ]
 
 
@@ -386,7 +481,7 @@ class Registry:
                 return spec
         candidates = self._by_name_any.get(name)
         if not candidates:
-            close = ", ".join(sorted(self._by_name_any)[:12])
+            close = ", ".join(sorted(self._by_name_any)[:20])
             raise UnknownParameterError(
                 f"no parameter named {name!r}; known parameters include: {close}"
             )
@@ -438,3 +533,11 @@ class Registry:
 
 
 REGISTRY = Registry(SPECS)
+
+# PRD 14.5: 0x48 is both FX-delay coarse time and FX-delay link, discriminated
+# only by VX. Registry lookup for inbound decode must key on (id, vx) for this
+# family, not id alone.
+_COARSE = REGISTRY.lookup("fx_delay_coarse")
+REGISTRY.register_exact(_COARSE, FX_TAP_LEFT)
+REGISTRY.register_exact(_COARSE, FX_TAP_RIGHT)
+REGISTRY.register_exact(REGISTRY.lookup("fx_delay_link"), FX_TAP_LINK)

@@ -230,3 +230,75 @@
   value: 0x01
   vx: null
   expected: "B0 63 67 B0 62 71 B0 06 01 B0 26 00"    # NOTE: VX 00
+
+- param: gate.threshold
+  channel: 0x25
+  value: 0x40
+  vx: null
+  expected: "B0 63 25 B0 62 44 B0 06 40 B0 26 07"
+
+- param: gate_in
+  channel: 0x25
+  value: 0x01
+  vx: null
+  expected: "B0 63 25 B0 62 46 B0 06 01 B0 26 00"    # NOTE: VX 00
+
+- param: comp.ratio
+  channel: 0x25
+  value: 0x50          # 2.6:1
+  vx: null
+  expected: "B0 63 25 B0 62 65 B0 06 50 B0 26 07"
+
+- param: comp.type
+  channel: 0x25
+  value: 0x03          # manual peak
+  vx: null
+  expected: "B0 63 25 B0 62 61 B0 06 03 B0 26 07"
+
+- param: comp_in
+  channel: 0x25
+  value: 0x01
+  vx: null
+  expected: "B0 63 25 B0 62 68 B0 06 01 B0 26 00"    # NOTE: VX 00
+
+- param: delay_time
+  channel: 0x25        # Input 6: half-scale, ceiling 0x40
+  value: 0x40
+  vx: null
+  expected: "B0 63 25 B0 62 6C B0 06 40 B0 26 07"
+
+- param: delay_time
+  channel: 0x62        # Mix 3: full scale, ceiling 0x7F
+  value: 0x7F
+  vx: null
+  expected: "B0 63 62 B0 62 6C B0 06 7F B0 26 07"
+
+- param: delay_in
+  channel: 0x25
+  value: 0x01
+  vx: null
+  expected: "B0 63 25 B0 62 6D B0 06 01 B0 26 00"    # NOTE: VX 00
+
+- param: fx_delay_fine
+  channel: 0x00        # FX Send 1
+  value: 0x31          # 100 ms, fine
+  vx: 0x05             # left tap
+  expected: "B0 63 00 B0 62 49 B0 06 31 B0 26 05"
+
+- param: fx_delay_coarse
+  channel: 0x00
+  value: 0x44          # 100 ms, coarse
+  vx: 0x05
+  expected: "B0 63 00 B0 62 48 B0 06 44 B0 26 05"
+
+- param: fx_delay_coarse
+  channel: 0x00
+  value: 0x44
+  vx: 0x07             # right tap -- same id 48, different VX
+  expected: "B0 63 00 B0 62 48 B0 06 44 B0 26 07"
+
+- param: fx_delay_link
+  channel: 0x00
+  value: 0x7F          # linked -- same id 48 again, VX 06 (PRD 14.5)
+  vx: null
+  expected: "B0 63 00 B0 62 48 B0 06 7F B0 26 06"

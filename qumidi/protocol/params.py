@@ -131,13 +131,20 @@ class SendTarget(VxMode):
         return vx
 
 
+#: FX delay tap VX values (PRD 7.2, 14.5). Module-level so the 0x48 collision
+#: resolution in registry.py can reference them without instantiating FxTap.
+FX_TAP_LEFT = 0x05
+FX_TAP_LINK = 0x06
+FX_TAP_RIGHT = 0x07
+
+
 @dataclass(frozen=True)
 class FxTap(VxMode):
     """FX delay tap: 0x05 left, 0x07 right, 0x06 link (PRD 7.2)."""
 
-    LEFT: int = 0x05
-    LINK: int = 0x06
-    RIGHT: int = 0x07
+    LEFT: int = FX_TAP_LEFT
+    LINK: int = FX_TAP_LINK
+    RIGHT: int = FX_TAP_RIGHT
 
     def validate(self, vx: int | None, param: str) -> int:
         if vx not in (self.LEFT, self.LINK, self.RIGHT):
