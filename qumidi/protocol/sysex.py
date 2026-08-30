@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 
+from qumidi.errors import ParameterRangeError
 from qumidi.midi.messages import SysEx
 from qumidi.protocol import constants as c
 
@@ -88,3 +89,51 @@ def parse_system_state_reply(sx: QuSysex) -> tuple[int, tuple[int, int]]:
 def meters_enable(midi_channel: int, on: bool) -> bytes:
     """Build the ``12`` meter on/off command (PRD 9.2)."""
     return build_sysex(midi_channel, bytes([c.CMD_METERS, 0x01 if on else 0x00]))
+
+
+def get_name(midi_channel: int, ch: int) -> bytes:
+    """Build a ``01`` channel-name request (PRD 9.2)."""
+    return build_sysex(midi_channel, bytes([c.CMD_GET_NAME, ch]))
+
+
+def set_name(midi_channel: int, ch: int, name: str) -> bytes:
+    """Build a ``03`` channel-name write, validating length and characters.
+
+    PRD 9.4: over-long names raise rather than being silently truncated by the
+    console -- a truncated name round-trips differently than it was set and
+    will oscillate any state-mirroring application. The length limit is
+    provisional until measured on hardware in M6.
+    """
+    if len(name) > c.MAX_NAME_LENGTH:
+        raise ParameterRangeError(
+            f"channel name {name!r} is {len(name)} characters; the console's strip "
+            f"display holds {c.MAX_NAME_LENGTH}"
+        )
+    for index, char in enumerate(name):
+        if not 0x20 <= ord(char) <= 0x7E:
+            raise ParameterRangeError(
+                f"channel name {name!r} contains a non-printable or non-ASCII character "
+                f"{char!r} at position {index}; the protocol carries 7-bit ASCII only"
+            )
+    return build_sysex(midi_channel, bytes([c.CMD_SET_NAME, ch]) + name.encode("ascii"))
+
+
+def parse_name_reply(sx: QuSysex) -> tuple[int, str]:
+    """Decode a ``02`` name reply, tolerantly (PRD 9.2, 9.4)."""
+    if not sx.payload:
+        raise ValueError("name reply has no channel byte")
+    ch = sx.payload[0]
+    chars = []
+    replaced = False
+    for byte in sx.payload[1:]:
+        if 0x20 <= byte <= 0x7E:
+            chars.append(chr(byte))
+        else:
+            chars.append("?")
+            replaced = True
+    if replaced:
+        log.warning(
+            "channel %#04x name contained non-printable bytes (%s); replaced with '?'",
+            ch, sx.payload[1:].hex(" "),
+        )
+    return ch, "".join(chars)

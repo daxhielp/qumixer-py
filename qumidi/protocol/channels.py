@@ -319,3 +319,32 @@ def check_channel(caps: ModelCaps | None, ch: ChannelId) -> None:
         )
         return
     raise UnsupportedOnModelError(message)
+
+
+#: Which channel classes carry a name (PRD 9.4). Mute groups are excluded --
+#: they are believed not to have names, and an explicit set stops the sweep
+#: retrying them on every resync. Verify on hardware in M6.
+NAMEABLE_CLASSES: frozenset[ChannelClass] = frozenset({
+    ChannelClass.INPUT,
+    ChannelClass.STEREO_INPUT,
+    ChannelClass.MIX_MONO,
+    ChannelClass.MIX_STEREO,
+    ChannelClass.LR,
+    ChannelClass.GROUP,
+    ChannelClass.MATRIX,
+    ChannelClass.DCA,
+    ChannelClass.FX_SEND,
+    ChannelClass.FX_RETURN,
+})
+
+
+def nameable_channels(caps: ModelCaps) -> list[ChannelId]:
+    """Every channel on this model that the name sweep should visit."""
+    out = []
+    for ch in ALL_CHANNELS:
+        if ch.cls not in NAMEABLE_CLASSES:
+            continue
+        limit, _ = _limit(caps, ch)
+        if ch.index <= limit:
+            out.append(ch)
+    return out

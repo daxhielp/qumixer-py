@@ -40,6 +40,9 @@ class FakeQu:
         keepalive_interval: float = 0.3,
         scene: dict[tuple[int, int, int], int] | None = None,
         drop_last_vx: bool = False,
+        names: dict[int, str] | None = None,
+        name_silent: set[int] | None = None,
+        ignore_name_sets: bool = False,
     ) -> None:
         self.model = model
         self.midi_channel = midi_channel
@@ -50,6 +53,10 @@ class FakeQu:
         self.sync_delay = sync_delay
         self.keepalive_interval = keepalive_interval
         self.drop_last_vx = drop_last_vx
+        self.names: dict[int, str] = dict(names or {})
+        self.name_requests: list[int] = []
+        self.name_silent: set[int] = set(name_silent or ())
+        self.ignore_name_sets = ignore_name_sets
 
         self.port = 0
         self.connections = 0
@@ -146,6 +153,20 @@ class FakeQu:
             return
         if parsed.command == c.CMD_GET_SYSTEM_STATE:
             await self._do_sync(writer)
+        elif parsed.command == c.CMD_GET_NAME:
+            ch = parsed.payload[0]
+            self.name_requests.append(ch)
+            if ch in self.name_silent:
+                return
+            name = self.names.get(ch, "")
+            writer.write(
+                build_sysex(
+                    self.midi_channel, bytes([c.CMD_NAME_REPLY, ch]) + name.encode("ascii")
+                )
+            )
+            await writer.drain()
+        elif parsed.command == c.CMD_SET_NAME and not self.ignore_name_sets:
+            self.names[parsed.payload[0]] = parsed.payload[1:].decode("ascii", "replace")
 
     async def send_surface_move(self, ch: int, param_id: int, value: int, vx: int) -> None:
         """Emit an unsolicited NRPN, as a physical control move would."""

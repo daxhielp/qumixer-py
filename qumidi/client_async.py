@@ -28,6 +28,8 @@ from qumidi.midi.nrpn import NrpnDecoder, RawParamUpdate, encode_nrpn
 from qumidi.protocol import constants as c
 from qumidi.protocol.channels import (
     GLOBAL,
+    NAMEABLE_CLASSES,
+    PERMISSIVE_CAPS,
     ChannelClass,
     ChannelId,
     Model,
@@ -35,10 +37,19 @@ from qumidi.protocol.channels import (
     caps_for_box_id,
     channel_from_raw,
     check_channel,
+    nameable_channels,
 )
 from qumidi.protocol.params import Direction, FlaggedIndex, Interpolated, ParamSpec, SendTarget
 from qumidi.protocol.registry import REGISTRY, send_target_vx
-from qumidi.protocol.sysex import QuSysex, get_system_state, parse_sysex, parse_system_state_reply
+from qumidi.protocol.sysex import (
+    QuSysex,
+    get_name,
+    get_system_state,
+    parse_name_reply,
+    parse_sysex,
+    parse_system_state_reply,
+    set_name,
+)
 from qumidi.state import CachedValue, CacheKey, Freshness, MembershipSet, StateCache, sub_index_for
 from qumidi.transport.base import ConnectionState, Transport
 from qumidi.transport.queue import OutboundQueue
@@ -67,6 +78,11 @@ class AsyncQuMixer:
         transport: Transport | None = None,
         max_send_rate: int | None = c.MAX_SEND_RATE,
         echo_window: float = c.ECHO_WINDOW,
+        sync_names: bool = True,
+        verify_name_writes: bool = True,
+        name_sweep_interval: float = c.NAME_SWEEP_INTERVAL,
+        name_request_timeout: float = c.NAME_REQUEST_TIMEOUT,
+        name_request_retries: int = c.NAME_REQUEST_RETRIES,
     ) -> None:
         self.host = host
         self.port = port
@@ -74,6 +90,13 @@ class AsyncQuMixer:
         self.reply_timeout = reply_timeout
         self.sync_timeout = sync_timeout
         self.echo_window = echo_window
+        self.sync_names = sync_names
+        self.verify_name_writes = verify_name_writes
+        self.name_sweep_interval = name_sweep_interval
+        self.name_request_timeout = name_request_timeout
+        self.name_request_retries = name_request_retries
+        self.names: dict[ChannelId, str | None] = {}
+        self._name_waiters: dict[int, asyncio.Future[str]] = {}
 
         self._transport = transport if transport is not None else TcpTransport(host, port)
         self._outbound = OutboundQueue(self._transport.send, max_send_rate=max_send_rate)
@@ -81,6 +104,9 @@ class AsyncQuMixer:
         self._tick_task: asyncio.Task[None] | None = None
         self._reply_event = asyncio.Event()
         self._sync_event = asyncio.Event()
+        #: Set once the sweep (when enabled) has finished, so wait_synced()
+        #: only returns once mixer.name(...) is populated (PRD 9.4).
+        self._ready_event = asyncio.Event()
 
         self._box_id: int | None = None
         self._firmware: tuple[int, int] | None = None
@@ -244,14 +270,18 @@ class AsyncQuMixer:
         await self.close()
 
     async def wait_synced(self, timeout: float | None = None) -> None:
-        """Block until the state push has completed (PRD 11.1)."""
-        await asyncio.wait_for(self._sync_event.wait(), timeout=timeout)
+        """Block until the state push -- and the name sweep, if enabled --
+        has completed (PRD 11.1, 9.4). ``mixer.name(...)`` is populated by
+        the time this returns.
+        """
+        await asyncio.wait_for(self._ready_event.wait(), timeout=timeout)
 
     # -- sync -------------------------------------------------------------
 
     async def _sync(self) -> None:
         self._reply_event.clear()
         self._sync_event.clear()
+        self._ready_event.clear()
         self._transport.set_state(ConnectionState.SYNCING)
         # PRD 9.3.8: every update ingested while this is True is tagged
         # Source.SYNC and fires no external_change. Must stay True for the
@@ -283,6 +313,14 @@ class AsyncQuMixer:
         finally:
             self._syncing = False
         self._transport.set_state(ConnectionState.READY)
+        if self.sync_names:
+            # PRD 9.3.8: keep the sync window short -- do not interleave the
+            # name sweep with the burst. The sweep runs after _syncing has
+            # already gone False, so an unrelated Source.MIXER event (e.g. a
+            # surface move) arriving mid-sweep is reported normally, not
+            # suppressed as sync traffic.
+            await self.sweep_names()
+        self._ready_event.set()
 
     # -- writes -------------------------------------------------------------
 
@@ -346,6 +384,69 @@ class AsyncQuMixer:
             + NoteOn(channel=n, note=ch.value, velocity=0x00).to_bytes()
         )
         await self._send(payload)
+
+    # -- names (PRD 9.4) ---------------------------------------------------
+
+    def name(self, ch: ChannelId) -> str | None:
+        """The console's name for a channel, or None if it has none.
+
+        None, never a sentinel string -- a channel can legitimately be *named*
+        "UNKNOWN" and the two must stay distinguishable (PRD 9.4).
+        """
+        return self.names.get(ch)
+
+    async def sweep_names(self) -> None:
+        """Request every nameable channel's name, paced (PRD 9.4).
+
+        Not part of the state push, so this runs after sync. A missing name
+        yields None and never aborts the sweep.
+        """
+        n = self._require_synced("sweep names")
+        caps = self._caps or PERMISSIVE_CAPS
+        for ch in nameable_channels(caps):
+            self.names[ch] = await self._request_name(n, ch)
+            await asyncio.sleep(self.name_sweep_interval)
+        log.info(
+            "name sweep complete: %d named channels",
+            sum(1 for v in self.names.values() if v),
+        )
+
+    async def _request_name(self, n: int, ch: ChannelId) -> str | None:
+        for attempt in range(self.name_request_retries + 1):
+            future: asyncio.Future[str] = asyncio.get_running_loop().create_future()
+            self._name_waiters[ch.value] = future
+            try:
+                await self._send(get_name(n, ch.value))
+                return await asyncio.wait_for(future, timeout=self.name_request_timeout)
+            except asyncio.TimeoutError:
+                log.debug("no name reply for %s (attempt %d)", ch.label, attempt + 1)
+            finally:
+                self._name_waiters.pop(ch.value, None)
+        return None
+
+    async def set_name(self, ch: ChannelId, name: str) -> None:
+        """Write a channel name, and confirm it (PRD 9.4).
+
+        The console does not acknowledge a name write, so with
+        verify_name_writes=True this issues a read-back and raises if the
+        console did not take the name.
+        """
+        n = self._require_synced(f"set the name of {ch.label}")
+        check_channel(self._caps, ch)
+        if ch.cls not in NAMEABLE_CLASSES:
+            raise ParameterRangeError(f"{ch.label} does not have a name")
+        await self._send(set_name(n, ch.value, name))
+        if not self.verify_name_writes:
+            self.names[ch] = name
+            return
+        observed = await self._request_name(n, ch)
+        self.names[ch] = observed
+        if observed != name:
+            raise ParameterRangeError(
+                f"{ch.label}: set the name to {name!r} but the console reports "
+                f"{observed!r}. Name writes are unacknowledged, so this read-back is "
+                f"the only confirmation available (PRD 9.4)."
+            )
 
     def encode(
         self,
@@ -462,6 +563,15 @@ class AsyncQuMixer:
             return
         if parsed.command == c.CMD_SYSTEM_STATE_REPLY:
             self._on_state_reply(parsed)
+        elif parsed.command == c.CMD_NAME_REPLY:
+            try:
+                raw_ch, name = parse_name_reply(parsed)
+            except ValueError as exc:
+                log.warning("malformed name reply: %s", exc)
+                return
+            waiter = self._name_waiters.get(raw_ch)
+            if waiter is not None and not waiter.done():
+                waiter.set_result(name)
         elif parsed.command == c.CMD_END_OF_SYNC:
             # PRD 9.3.7: flush the held update, or the last parameter in the
             # burst is stranded and the cache is silently one value short.

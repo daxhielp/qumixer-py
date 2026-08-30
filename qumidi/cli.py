@@ -49,6 +49,17 @@ async def cmd_set(args: argparse.Namespace) -> int:
         return 0
 
 
+async def cmd_set_name(args: argparse.Namespace) -> int:
+    from qumidi.protocol.channels import parse_channel_ref
+
+    async with AsyncQuMixer(args.host, port=args.port) as mixer:
+        await mixer.wait_synced()
+        ch = parse_channel_ref(args.channel)
+        await mixer.set_name(ch, args.name)
+        print(f"{ch.label}: {args.name!r}")
+    return 0
+
+
 async def cmd_monitor(args: argparse.Namespace) -> int:
     from qumidi.events import ChangeEvent, Source
     from qumidi.protocol.channels import parse_channel_ref
@@ -84,6 +95,8 @@ async def cmd_monitor(args: argparse.Namespace) -> int:
 async def cmd_dump_state(args: argparse.Namespace) -> int:
     import json
 
+    from qumidi.protocol.channels import channel_from_raw
+
     async with AsyncQuMixer(args.host, port=args.port) as mixer:
         await mixer.wait_synced()
         rows = sorted(
@@ -100,20 +113,30 @@ async def cmd_dump_state(args: argparse.Namespace) -> int:
             }
             for (raw_ch, cls, param, sub), value in rows
         ]
+        # PRD 9.4: None stays None (never a sentinel string) all the way out
+        # to the JSON, where it renders as null rather than "" or "UNKNOWN".
+        names = {
+            ch.label: name for ch, name in sorted(mixer.names.items(), key=lambda kv: kv[0].value)
+        }
         if args.json:
             print(json.dumps(
-                {"box_id": mixer.box_id, "firmware": mixer.firmware, "values": entries},
+                {
+                    "box_id": mixer.box_id,
+                    "firmware": mixer.firmware,
+                    "names": names,
+                    "values": entries,
+                },
                 indent=2,
             ))
         else:
-            from qumidi.protocol.channels import channel_from_raw
-
             print(f"BoxID {mixer.box_id}, firmware {mixer.firmware}, {len(entries)} values")
             for (raw_ch, _cls, param, sub_index), value in rows:
-                label = channel_from_raw(raw_ch).label
+                ch = channel_from_raw(raw_ch)
+                name = mixer.names.get(ch)
+                label_display = f"{ch.label} ({name})" if name else ch.label
                 sub_display = "" if sub_index is None else f"[{sub_index}]"
                 print(
-                    f"  {label:<14} {param}{sub_display:<6} "
+                    f"  {label_display:<14} {param}{sub_display:<6} "
                     f"{value.raw:#04x}  {value.freshness.name}"
                 )
     return 0
@@ -178,6 +201,13 @@ def build_parser() -> argparse.ArgumentParser:
         "--to-band", type=int, help="GEQ band index for geq_gain, e.g. 15"
     )
     setp.set_defaults(func=cmd_set)
+
+    namep = sub.add_parser("set-name", parents=[common], help="rename a channel")
+    namep.add_argument("--host", required=True)
+    namep.add_argument("--port", type=int, default=c.QU_TCP_PORT)
+    namep.add_argument("channel", help="channel reference, e.g. input:6, mix:3, lr")
+    namep.add_argument("name", help="new name, ASCII printable characters only")
+    namep.set_defaults(func=cmd_set_name)
 
     mon = sub.add_parser(
         "monitor", parents=[common], help="print state changes as they arrive"
