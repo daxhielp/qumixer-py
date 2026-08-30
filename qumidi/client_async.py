@@ -347,6 +347,19 @@ class AsyncQuMixer:
             # suppressed as sync traffic.
             await self.sweep_names()
         self._ready_event.set()
+        # Slice 7: SyncComplete is the "everything -- values *and* names --
+        # is trustworthy again" signal, so it must fire after the sweep
+        # above, not at the wire-level end-of-sync marker. It used to be
+        # emitted from _on_sysex's CMD_END_OF_SYNC handler, synchronously at
+        # the ``14`` marker; that ran *before* this method's continuation
+        # (this line) could ever resume -- asyncio.Event.set() only
+        # schedules waiters via call_soon, it does not resume them inline --
+        # so a `qumidi monitor` watching for SyncComplete would see it fire
+        # while names were still mid-sweep, before a resync/recall_scene's
+        # own re-sweep had actually finished. This is the one place that
+        # fires it now, for both the initial connect and every future
+        # resync()/recall_scene(), so it always follows the sweep.
+        self.events.emit_sync_complete()
 
     # -- writes -------------------------------------------------------------
 
@@ -664,8 +677,10 @@ class AsyncQuMixer:
             # _dispatch's routing ever changes to skip the decoder for sysex.
             for update in self._decoder.flush():
                 self._ingest(update)
+            # Only the burst-wait wakeup lives here. SyncComplete itself is
+            # emitted later, from _sync()'s own continuation after the name
+            # sweep -- see the comment there for why.
             self._sync_event.set()
-            self.events.emit_sync_complete()
 
     def _ingest(self, update: RawParamUpdate) -> None:
         if self._midi_channel is not None and update.midi_channel != self._midi_channel:

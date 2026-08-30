@@ -52,6 +52,20 @@ async def test_sync_emits_one_sync_complete_and_no_external_changes(fake_qu_fact
     assert syncs == [True]
 
 
+async def test_sync_complete_fires_after_the_name_sweep(fake_qu_factory) -> None:  # type: ignore[no-untyped-def]
+    # PRD 9.4/9.3.8: SyncComplete means "everything -- values and names -- is
+    # trustworthy again", so it must fire only once the name sweep has
+    # already populated mixer.name(...), not at the wire-level end-of-sync
+    # marker (which lands before the sweep even starts).
+    fake = await fake_qu_factory(scene=SCENE, names={0x25: "Kick"})
+    name_when_synced: list[str | None] = []
+    mixer = AsyncQuMixer("127.0.0.1", port=fake.port)
+    mixer.on_sync_complete(lambda: name_when_synced.append(mixer.name(Input(6))))
+    async with mixer:
+        await mixer.wait_synced()
+    assert name_when_synced == ["Kick"]
+
+
 async def test_sync_sourced_changes_are_still_visible_to_subscribers(fake_qu_factory) -> None:  # type: ignore[no-untyped-def]
     fake = await fake_qu_factory(scene=SCENE)
     sourced: list[Source] = []

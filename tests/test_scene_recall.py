@@ -88,6 +88,20 @@ async def test_names_are_re_swept_after_a_recall(fake_qu_factory) -> None:  # ty
         assert mixer.name(Input(6)) == "Snare"
 
 
+async def test_sync_complete_fires_after_the_post_recall_name_sweep(fake_qu_factory) -> None:  # type: ignore[no-untyped-def]
+    # Slice 7 acceptance (PRD 16.12): stale, SceneRecalled, resync, name
+    # re-sweep, and finally SyncComplete -- in that order. The re-sweep must
+    # already be done by the time SyncComplete fires, not just the burst.
+    fake = await fake_qu_factory(scene=SCENE1, names={0x25: "Kick"},
+                                 scene_names={12: {0x25: "Snare"}})
+    name_when_synced: list[str | None] = []
+    async with AsyncQuMixer("127.0.0.1", port=fake.port, scene_settle_delay=0.02) as mixer:
+        await mixer.wait_synced()
+        mixer.on_sync_complete(lambda: name_when_synced.append(mixer.name(Input(6))))
+        await mixer.recall_scene(12)
+    assert name_when_synced == ["Snare"]
+
+
 async def test_resync_false_skips_the_rebuild(fake_qu_factory) -> None:  # type: ignore[no-untyped-def]
     fake = await fake_qu_factory(scene=SCENE1, scenes={12: SCENE12})
     async with AsyncQuMixer("127.0.0.1", port=fake.port) as mixer:
