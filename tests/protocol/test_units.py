@@ -2,7 +2,21 @@ import math
 
 import pytest
 
-from qumidi.protocol.units import FADER_TAPER, Taper, linear_taper
+from qumidi.protocol.units import (
+    COMP_RATIO_TAPER,
+    DSNAKE_GAIN_TAPER,
+    FADER_TAPER,
+    FREQ_TAPER,
+    GEQ_GAIN_TAPER,
+    INPUT_DELAY_TAPER,
+    LOCAL_GAIN_TAPER,
+    MIX_DELAY_TAPER,
+    PEQ_GAIN_TAPER,
+    TRIM_TAPER,
+    Taper,
+    linear_taper,
+    log_taper,
+)
 
 # PRD 8.1, transcribed from the spec table.
 FADER_ANCHORS = [
@@ -106,3 +120,82 @@ def test_linear_taper_without_a_centre() -> None:
 def test_taper_rejects_unsorted_points() -> None:
     with pytest.raises(ValueError):
         Taper(points=((0x10, 0.0), (0x00, 1.0)))
+
+
+LOCAL_GAIN_ANCHORS = [
+    (60.0, 0x7F), (50.0, 0x6B), (40.0, 0x57), (30.0, 0x44),
+    (20.0, 0x30), (10.0, 0x1D), (5.0, 0x13), (0.0, 0x0A), (-5.0, 0x00),
+]
+DSNAKE_GAIN_ANCHORS = [
+    (60.0, 0x7F), (50.0, 0x67), (40.0, 0x50), (35.0, 0x45), (30.0, 0x39),
+    (25.0, 0x2E), (20.0, 0x22), (10.0, 0x0B), (5.0, 0x00),
+]
+
+
+@pytest.mark.parametrize("db,raw", LOCAL_GAIN_ANCHORS)
+def test_local_preamp_gain_anchors(db, raw) -> None:  # type: ignore[no-untyped-def]
+    assert LOCAL_GAIN_TAPER.to_db(raw) == pytest.approx(db, abs=0.01)
+    assert LOCAL_GAIN_TAPER.to_raw(db) == raw
+
+
+@pytest.mark.parametrize("db,raw", DSNAKE_GAIN_ANCHORS)
+def test_dsnake_preamp_gain_anchors(db, raw) -> None:  # type: ignore[no-untyped-def]
+    assert DSNAKE_GAIN_TAPER.to_db(raw) == pytest.approx(db, abs=0.01)
+    assert DSNAKE_GAIN_TAPER.to_raw(db) == raw
+
+
+def test_the_two_preamp_curves_are_different() -> None:
+    # PRD 8.3: do not share the table with 8.2.
+    assert LOCAL_GAIN_TAPER.points != DSNAKE_GAIN_TAPER.points
+    assert LOCAL_GAIN_TAPER.to_db(0x50) != DSNAKE_GAIN_TAPER.to_db(0x50)
+
+
+def test_neither_preamp_curve_has_a_minus_infinity() -> None:
+    assert LOCAL_GAIN_TAPER.neg_inf_at_zero is False
+    assert LOCAL_GAIN_TAPER.to_db(0x00) == pytest.approx(-5.0)
+    assert DSNAKE_GAIN_TAPER.to_db(0x00) == pytest.approx(5.0)
+
+
+def test_trim_and_peq_gain_are_centred_on_0x40() -> None:
+    for taper, span in ((TRIM_TAPER, 24.0), (PEQ_GAIN_TAPER, 12.0), (GEQ_GAIN_TAPER, 12.0)):
+        assert taper.to_db(0x40) == pytest.approx(0.0)
+        assert taper.to_db(0x00) == pytest.approx(-span)
+        assert taper.to_db(0x7F) == pytest.approx(span)
+        assert taper.to_raw(0.0) == 0x40
+
+
+def test_input_delay_is_half_scale_against_mix_delay() -> None:
+    # PRD 7.2: the input-channel range is half-scale, or the ms helper is
+    # wrong by 2x on inputs.
+    assert INPUT_DELAY_TAPER.to_db(0x40) == pytest.approx(85.0)
+    assert MIX_DELAY_TAPER.to_db(0x7F) == pytest.approx(170.0)
+    assert INPUT_DELAY_TAPER.to_db(0x20) == pytest.approx(42.5)
+    assert MIX_DELAY_TAPER.to_db(0x20) == pytest.approx(170.0 * 32 / 127, abs=0.1)
+
+
+def test_log_taper_is_monotonic_and_hits_its_endpoints() -> None:
+    taper = log_taper(20.0, 20000.0, unit="Hz")
+    assert taper.to_db(0x00) == pytest.approx(20.0, rel=0.01)
+    assert taper.to_db(0x7F) == pytest.approx(20000.0, rel=0.01)
+    values = [taper.to_db(raw) for raw in range(128)]
+    assert values == sorted(values)
+
+
+def test_frequency_taper_is_documented_as_unverified() -> None:
+    # PRD 8.4: expose .raw as primary; the helpers are marked clearly as
+    # unverified and are prime candidates for hardware calibration.
+    #
+    # NOTE: `FREQ_TAPER` is a `Taper` *instance* that does not set its own
+    # `__doc__`, so `FREQ_TAPER.__doc__` falls through to `Taper`'s class
+    # docstring (which is truthy and does NOT mention "unverified") rather
+    # than `None`. That means `FREQ_TAPER.__doc__ or log_taper.__doc__` would
+    # never actually reach the `log_taper.__doc__` fallback. Check
+    # `log_taper.__doc__` directly, which is what carries the wording.
+    assert "unverified" in (log_taper.__doc__ or "").lower()
+    assert FREQ_TAPER.verified is False
+    assert LOCAL_GAIN_TAPER.verified is True
+
+
+def test_comp_ratio_reference_point() -> None:
+    # PRD 7.2 gives one interior anchor: 2.6:1 = 0x50.
+    assert COMP_RATIO_TAPER.to_db(0x50) == pytest.approx(2.6, abs=0.05)
