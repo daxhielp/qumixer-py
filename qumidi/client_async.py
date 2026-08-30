@@ -8,7 +8,9 @@ registry-driven set/get, names, scenes, reconnect and meters.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
+import os
 import time
 from collections import defaultdict, deque
 from collections.abc import Callable
@@ -69,6 +71,7 @@ from qumidi.protocol.sysex import (
     parse_system_state_reply,
     set_name,
 )
+from qumidi.snapshot import SnapshotDiff, build_snapshot, diff_snapshot
 from qumidi.state import CachedValue, CacheKey, Freshness, MembershipSet, StateCache, sub_index_for
 from qumidi.transport.base import ConnectionState, Transport
 from qumidi.transport.queue import OutboundQueue
@@ -255,6 +258,35 @@ class AsyncQuMixer:
         if not isinstance(spec.domain, FlaggedIndex):
             raise UnknownParameterError(f"{param} is not a set-valued parameter")
         return self.cache.membership(ch, param, spec.domain.count, spec.domain.on_flag)
+
+    # -- snapshot, export and diff (PRD 10.5) --------------------------------
+
+    def snapshot(self) -> dict[str, Any]:
+        """A JSON-serialisable picture of everything the library knows.
+
+        UNKNOWN and UNCONFIRMED entries are included with their freshness,
+        never omitted (PRD 10.5).
+        """
+        return build_snapshot(
+            box_id=self._box_id,
+            model=None if self.model is None else self.model.name,
+            firmware=self._firmware,
+            cache=self.cache,
+            names=self.names,
+            now=time.monotonic(),
+        )
+
+    def export_snapshot(self, path: str | os.PathLike[str]) -> None:
+        """Write ``snapshot()`` to ``path`` as JSON."""
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump(self.snapshot(), handle, indent=2)
+
+    def diff(self, snapshot: dict[str, Any]) -> list[SnapshotDiff]:
+        """What differs between a snapshot and the current cache.
+
+        There is deliberately no apply/restore counterpart -- see PRD 10.5.
+        """
+        return diff_snapshot(snapshot, self.cache)
 
     # -- object facade (PRD 11.1) -------------------------------------------
 

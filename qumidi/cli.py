@@ -99,37 +99,15 @@ async def cmd_dump_state(args: argparse.Namespace) -> int:
 
     async with AsyncQuMixer(args.host, port=args.port) as mixer:
         await mixer.wait_synced()
-        rows = sorted(
-            mixer.cache.items(), key=lambda item: (item[0][0], item[0][2], item[0][3] or -1)
-        )
-        entries: list[dict[str, object]] = [
-            {
-                "channel_raw": raw_ch,
-                "channel_class": cls.name,
-                "param": param,
-                "sub_index": sub,
-                "raw": value.raw,
-                "freshness": value.freshness.name,
-            }
-            for (raw_ch, cls, param, sub), value in rows
-        ]
-        # PRD 9.4: None stays None (never a sentinel string) all the way out
-        # to the JSON, where it renders as null rather than "" or "UNKNOWN".
-        names = {
-            ch.label: name for ch, name in sorted(mixer.names.items(), key=lambda kv: kv[0].value)
-        }
+        if args.out:
+            mixer.export_snapshot(args.out)
         if args.json:
-            print(json.dumps(
-                {
-                    "box_id": mixer.box_id,
-                    "firmware": mixer.firmware,
-                    "names": names,
-                    "values": entries,
-                },
-                indent=2,
-            ))
+            print(json.dumps(mixer.snapshot(), indent=2))
         else:
-            print(f"BoxID {mixer.box_id}, firmware {mixer.firmware}, {len(entries)} values")
+            rows = sorted(
+                mixer.cache.items(), key=lambda item: (item[0][0], item[0][2], item[0][3] or -1)
+            )
+            print(f"BoxID {mixer.box_id}, firmware {mixer.firmware}, {len(rows)} values")
             for (raw_ch, _cls, param, sub_index), value in rows:
                 ch = channel_from_raw(raw_ch)
                 name = mixer.names.get(ch)
@@ -233,6 +211,7 @@ def build_parser() -> argparse.ArgumentParser:
     dump.add_argument("--host", required=True)
     dump.add_argument("--port", type=int, default=c.QU_TCP_PORT)
     dump.add_argument("--json", action="store_true")
+    dump.add_argument("--out", help="also write the snapshot as JSON to this file")
     dump.set_defaults(func=cmd_dump_state)
 
     rec = sub.add_parser(
