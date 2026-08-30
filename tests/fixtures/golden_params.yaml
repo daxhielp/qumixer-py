@@ -164,3 +164,69 @@
   value: 0x01
   vx: null
   expected: "B0 63 25 B0 62 6B B0 06 01 B0 26 07"
+
+- param: peq.lf.gain
+  channel: 0x25
+  value: 0x40          # 0 dB
+  vx: null
+  expected: "B0 63 25 B0 62 01 B0 06 40 B0 26 07"
+
+- param: peq.lf.type
+  channel: 0x25
+  value: 0x06          # shelf
+  vx: null
+  expected: "B0 63 25 B0 62 04 B0 06 06 B0 26 07"
+
+- param: peq.hf.gain
+  channel: 0x25
+  value: 0x50
+  vx: null
+  expected: "B0 63 25 B0 62 0D B0 06 50 B0 26 07"
+
+- param: peq.hf.type
+  channel: 0x25
+  value: 0x00          # bell
+  vx: null
+  expected: "B0 63 25 B0 62 10 B0 06 00 B0 26 07"
+
+- param: peq_in
+  channel: 0x25
+  value: 0x01
+  vx: null
+  expected: "B0 63 25 B0 62 11 B0 06 01 B0 26 00"    # NOTE: VX 00
+
+- param: hpf_freq
+  channel: 0x25
+  value: 0x30
+  vx: null
+  expected: "B0 63 25 B0 62 13 B0 06 30 B0 26 07"
+
+- param: hpf_in
+  channel: 0x25
+  value: 0x01
+  vx: null
+  expected: "B0 63 25 B0 62 14 B0 06 01 B0 26 00"    # NOTE: VX 00
+
+- param: geq_gain
+  channel: 0x67        # LR
+  value: 0x40
+  vx: 0x00             # band boundary, low: 31.5 Hz
+  expected: "B0 63 67 B0 62 70 B0 06 40 B0 26 00"
+
+- param: geq_gain
+  channel: 0x67
+  value: 0x30
+  vx: 0x0F             # band 15 = 1 kHz (PRD 11.1)
+  expected: "B0 63 67 B0 62 70 B0 06 30 B0 26 0F"
+
+- param: geq_gain
+  channel: 0x67
+  value: 0x40
+  vx: 0x1B             # band boundary, high: 16 kHz
+  expected: "B0 63 67 B0 62 70 B0 06 40 B0 26 1B"
+
+- param: geq_in
+  channel: 0x67
+  value: 0x01
+  vx: null
+  expected: "B0 63 67 B0 62 71 B0 06 01 B0 26 00"    # NOTE: VX 00

@@ -30,14 +30,26 @@ from qumidi.protocol.params import (
     Boolean,
     Direction,
     DsnakeSocket,
+    EnumDomain,
     Fixed,
+    GeqBand,
     Interpolated,
     ParamSpec,
     Raw7Bit,
     SendTarget,
     Tier,
 )
-from qumidi.protocol.units import DSNAKE_GAIN_TAPER, FADER_TAPER, LOCAL_GAIN_TAPER, TRIM_TAPER
+from qumidi.protocol.units import (
+    DSNAKE_GAIN_TAPER,
+    FADER_TAPER,
+    FREQ_TAPER,
+    GEQ_GAIN_TAPER,
+    HPF_TAPER,
+    LOCAL_GAIN_TAPER,
+    PEQ_GAIN_TAPER,
+    TRIM_TAPER,
+    WIDTH_TAPER,
+)
 
 log = logging.getLogger(__name__)
 
@@ -102,6 +114,31 @@ _FADER_CLASSES = _INPUTS | _FX_RETURNS | _DCA | _MIXES
 _SEND_SOURCES = _INPUTS | _FX_RETURNS | frozenset(
     {ChannelClass.MIX_MONO, ChannelClass.MIX_STEREO, ChannelClass.GROUP}
 )
+#: PEQ/HPF live on inputs, FX returns and mixes -- not DCAs.
+_EQ_CLASSES = _INPUTS | _FX_RETURNS | _MIXES
+
+#: PRD 7.2: 28 bands, index 0x00-0x1B. 0-based throughout, matching the wire
+#: encoding. Band 14 is 800 Hz and band 15 is 1 kHz (PRD 11.1).
+GEQ_BANDS: tuple[float, ...] = (
+    31.5, 40, 50, 63, 80, 100, 125, 160, 200, 250, 315, 400, 500, 630, 800,
+    1000, 1250, 1600, 2000, 2500, 3150, 4000, 5000, 6300, 8000, 10000, 12500, 16000,
+)
+
+
+def geq_band_for_freq(hz: float) -> int:
+    """Resolve a frequency to its 0-based GEQ band index.
+
+    Most callers want this rather than the raw index -- see
+    geq.set_band_db(freq=1000) in the object facade.
+    """
+    if not GEQ_BANDS[0] / 1.5 <= hz <= GEQ_BANDS[-1] * 1.5:
+        raise ParameterRangeError(
+            f"{hz} Hz is outside the GEQ range {GEQ_BANDS[0]}-{GEQ_BANDS[-1]} Hz"
+        )
+    return min(range(len(GEQ_BANDS)), key=lambda i: abs(GEQ_BANDS[i] - hz))
+
+
+_PEQ_TYPE = EnumDomain({0x00: "bell", 0x06: "shelf"})
 
 
 SPECS: list[ParamSpec] = [
@@ -236,6 +273,65 @@ SPECS: list[ParamSpec] = [
         "GLOBAL channel and accepted from any CH until M6 records the real one. "
         "0x00 group mode, 0x01 mix mode.",
     ),
+
+    # --- PEQ and HPF (PRD 7.2). IDs 08 and 0C are deliberately unassigned. ---
+    ParamSpec(name="peq.lf.gain", nrpn_id=0x01, vx=Fixed(0x07),
+              domain=Interpolated(lo=0x00, hi=0x7F, taper=PEQ_GAIN_TAPER),
+              applies_to=_EQ_CLASSES),
+    ParamSpec(name="peq.lf.freq", nrpn_id=0x02, vx=Fixed(0x07),
+              domain=Interpolated(lo=0x00, hi=0x7F, taper=FREQ_TAPER),
+              applies_to=_EQ_CLASSES, notes="20 Hz-20 kHz, curve unverified (PRD 8.4)."),
+    ParamSpec(name="peq.lf.width", nrpn_id=0x03, vx=Fixed(0x07),
+              domain=Interpolated(lo=0x00, hi=0x7F, taper=WIDTH_TAPER),
+              applies_to=_EQ_CLASSES, notes="1.5 to 1/9 octave, curve unverified."),
+    ParamSpec(name="peq.lf.type", nrpn_id=0x04, vx=Fixed(0x07), domain=_PEQ_TYPE,
+              applies_to=_EQ_CLASSES),
+    ParamSpec(name="peq.lm.gain", nrpn_id=0x05, vx=Fixed(0x07),
+              domain=Interpolated(lo=0x00, hi=0x7F, taper=PEQ_GAIN_TAPER),
+              applies_to=_EQ_CLASSES),
+    ParamSpec(name="peq.lm.freq", nrpn_id=0x06, vx=Fixed(0x07),
+              domain=Interpolated(lo=0x00, hi=0x7F, taper=FREQ_TAPER),
+              applies_to=_EQ_CLASSES),
+    ParamSpec(name="peq.lm.width", nrpn_id=0x07, vx=Fixed(0x07),
+              domain=Interpolated(lo=0x00, hi=0x7F, taper=WIDTH_TAPER),
+              applies_to=_EQ_CLASSES),
+    # 0x08 unassigned: LM has no Type.
+    ParamSpec(name="peq.hm.gain", nrpn_id=0x09, vx=Fixed(0x07),
+              domain=Interpolated(lo=0x00, hi=0x7F, taper=PEQ_GAIN_TAPER),
+              applies_to=_EQ_CLASSES),
+    ParamSpec(name="peq.hm.freq", nrpn_id=0x0A, vx=Fixed(0x07),
+              domain=Interpolated(lo=0x00, hi=0x7F, taper=FREQ_TAPER),
+              applies_to=_EQ_CLASSES),
+    ParamSpec(name="peq.hm.width", nrpn_id=0x0B, vx=Fixed(0x07),
+              domain=Interpolated(lo=0x00, hi=0x7F, taper=WIDTH_TAPER),
+              applies_to=_EQ_CLASSES),
+    # 0x0C unassigned: HM has no Type.
+    ParamSpec(name="peq.hf.gain", nrpn_id=0x0D, vx=Fixed(0x07),
+              domain=Interpolated(lo=0x00, hi=0x7F, taper=PEQ_GAIN_TAPER),
+              applies_to=_EQ_CLASSES),
+    ParamSpec(name="peq.hf.freq", nrpn_id=0x0E, vx=Fixed(0x07),
+              domain=Interpolated(lo=0x00, hi=0x7F, taper=FREQ_TAPER),
+              applies_to=_EQ_CLASSES),
+    ParamSpec(name="peq.hf.width", nrpn_id=0x0F, vx=Fixed(0x07),
+              domain=Interpolated(lo=0x00, hi=0x7F, taper=WIDTH_TAPER),
+              applies_to=_EQ_CLASSES),
+    ParamSpec(name="peq.hf.type", nrpn_id=0x10, vx=Fixed(0x07), domain=_PEQ_TYPE,
+              applies_to=_EQ_CLASSES),
+    ParamSpec(name="peq_in", nrpn_id=0x11, vx=Fixed(0x00), domain=Boolean(),
+              applies_to=_EQ_CLASSES, notes="VX is 0x00 here, not 0x07."),
+    ParamSpec(name="hpf_freq", nrpn_id=0x13, vx=Fixed(0x07),
+              domain=Interpolated(lo=0x00, hi=0x7F, taper=HPF_TAPER),
+              applies_to=_INPUTS),
+    ParamSpec(name="hpf_in", nrpn_id=0x14, vx=Fixed(0x00), domain=Boolean(),
+              applies_to=_INPUTS, notes="VX is 0x00 here, not 0x07."),
+
+    # --- GEQ (PRD 7.2). Mixes and LR only. ---
+    ParamSpec(name="geq_gain", nrpn_id=0x70, vx=GeqBand(),
+              domain=Interpolated(lo=0x00, hi=0x7F, taper=GEQ_GAIN_TAPER),
+              applies_to=_MIXES,
+              notes="28 bands, index 0x00-0x1B. Band 15 is 1 kHz (PRD 11.1)."),
+    ParamSpec(name="geq_in", nrpn_id=0x71, vx=Fixed(0x00), domain=Boolean(),
+              applies_to=_MIXES, notes="VX is 0x00 here, not 0x07."),
 ]
 
 
