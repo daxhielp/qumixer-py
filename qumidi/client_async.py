@@ -9,6 +9,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
+from collections import defaultdict, deque
+from collections.abc import Callable
 from types import TracebackType
 
 from qumidi.errors import (
@@ -17,14 +20,24 @@ from qumidi.errors import (
     QuConnectionError,
     ReadOnlyParameterError,
     SyncTimeoutError,
+    UnknownParameterError,
 )
+from qumidi.events import ChangeEvent, EventBus, Source
 from qumidi.midi.messages import MidiMessage, NoteOn, SysEx
-from qumidi.midi.nrpn import encode_nrpn
+from qumidi.midi.nrpn import NrpnDecoder, RawParamUpdate, encode_nrpn
 from qumidi.protocol import constants as c
-from qumidi.protocol.channels import ChannelId, Model, ModelCaps, caps_for_box_id, check_channel
-from qumidi.protocol.params import Direction, Interpolated, ParamSpec, SendTarget
+from qumidi.protocol.channels import (
+    ChannelId,
+    Model,
+    ModelCaps,
+    caps_for_box_id,
+    channel_from_raw,
+    check_channel,
+)
+from qumidi.protocol.params import Direction, FlaggedIndex, Interpolated, ParamSpec, SendTarget
 from qumidi.protocol.registry import REGISTRY, send_target_vx
 from qumidi.protocol.sysex import QuSysex, get_system_state, parse_sysex, parse_system_state_reply
+from qumidi.state import CachedValue, CacheKey, Freshness, MembershipSet, StateCache, sub_index_for
 from qumidi.transport.base import ConnectionState, Transport
 from qumidi.transport.queue import OutboundQueue
 from qumidi.transport.tcp import TcpTransport
@@ -51,16 +64,19 @@ class AsyncQuMixer:
         sync_timeout: float = c.SYNC_TIMEOUT,
         transport: Transport | None = None,
         max_send_rate: int | None = c.MAX_SEND_RATE,
+        echo_window: float = c.ECHO_WINDOW,
     ) -> None:
         self.host = host
         self.port = port
         self.ipad_flag = ipad_flag
         self.reply_timeout = reply_timeout
         self.sync_timeout = sync_timeout
+        self.echo_window = echo_window
 
         self._transport = transport if transport is not None else TcpTransport(host, port)
         self._outbound = OutboundQueue(self._transport.send, max_send_rate=max_send_rate)
         self._reader_task: asyncio.Task[None] | None = None
+        self._tick_task: asyncio.Task[None] | None = None
         self._reply_event = asyncio.Event()
         self._sync_event = asyncio.Event()
 
@@ -68,6 +84,21 @@ class AsyncQuMixer:
         self._firmware: tuple[int, int] | None = None
         self._midi_channel: int | None = None
         self._caps: ModelCaps | None = None
+
+        # -- Slice 4: cache, events, ingest ---------------------------------
+        self.cache = StateCache()
+        self.events = EventBus()
+        self._decoder = NrpnDecoder()
+        #: Pending optimistic writes awaiting a confirming echo, FIFO per key
+        #: (PRD 10.3). Only ``_expect_echo``/``_consume_expectation`` mutate
+        #: entries in; reads use ``.get()`` so a lookup never auto-vivifies an
+        #: empty deque for a key that has never had a write.
+        self._expectations: dict[CacheKey, deque[tuple[int, float]]] = defaultdict(deque)
+        self._expectation_tasks: set[asyncio.Task[None]] = set()
+        #: True for the entire state-burst handshake, including the
+        #: flush-on-``14`` in ``_on_sysex`` (PRD 9.3.8).
+        self._syncing = False
+        self._transport.on_state_change(self.events.emit_connection_state)
 
     # -- properties -------------------------------------------------------
 
@@ -108,11 +139,55 @@ class AsyncQuMixer:
     def state(self) -> ConnectionState:
         return self._transport.state
 
+    # -- reads and subscriptions -------------------------------------------
+
+    def get(self, ch: ChannelId, param: str, sub: int | None = None) -> CachedValue:
+        """Read the cache. Synchronous and cheap in both APIs (PRD 10.2)."""
+        return self.cache.get(ch, param, sub)
+
+    def membership(self, ch: ChannelId, param: str) -> MembershipSet:
+        """Read a set-valued parameter (DCA / mute-group assign, PRD 10.1a)."""
+        spec = REGISTRY.lookup(param, ch.cls)
+        if not isinstance(spec.domain, FlaggedIndex):
+            raise UnknownParameterError(f"{param} is not a set-valued parameter")
+        return self.cache.membership(ch, param, spec.domain.count, spec.domain.on_flag)
+
+    def on_change(
+        self,
+        cb: Callable[[ChangeEvent], None],
+        channel: ChannelId | None = None,
+        param: str | None = None,
+    ) -> Callable[[], None]:
+        return self.events.on_change(cb, channel=channel, param=param)
+
+    def on_connection_state(self, cb: Callable[[ConnectionState], None]) -> None:
+        self.events.on_connection_state(cb)
+
+    def on_sync_complete(self, cb: Callable[[], None]) -> None:
+        self.events.on_sync_complete(cb)
+
+    def on_write_unconfirmed(self, cb: Callable[[ChannelId, str, int | None], None]) -> None:
+        self.events.on_write_unconfirmed(cb)
+
+    async def refresh(self, ch: ChannelId | None = None, param: str | None = None) -> None:
+        """Re-read state from the console.
+
+        The protocol offers no targeted get, so this is implemented as a full
+        resync regardless of the arguments (PRD 10.2). The arguments exist
+        only to document intent at the call site.
+        """
+        await self.resync()
+
+    async def resync(self) -> None:
+        """Re-run the full state handshake against a live connection."""
+        await self._sync()
+
     # -- lifecycle --------------------------------------------------------
 
     async def connect(self) -> None:
         await self._transport.connect()
         self._reader_task = asyncio.create_task(self._read_loop(), name="qumidi-client-read")
+        self._tick_task = asyncio.create_task(self._tick_loop(), name="qumidi-client-tick")
         await self._outbound.start()
         try:
             await self._sync()
@@ -121,7 +196,10 @@ class AsyncQuMixer:
             # A sync failure (no reply / no end marker) must not leak this
             # connection -- __aenter__ raising skips __aexit__ entirely under
             # `async with`, so connect() must clean up after itself rather
-            # than relying on the caller to also call close().
+            # than relying on the caller to also call close(). The tick task
+            # is created before this try block (alongside the reader task) so
+            # that this same close() call also tears it down -- neither task
+            # may outlive a failed connect().
             await self.close()
             raise
 
@@ -135,6 +213,19 @@ class AsyncQuMixer:
             except Exception:
                 log.exception("client read loop raised while closing")
             self._reader_task = None
+        if self._tick_task is not None:
+            self._tick_task.cancel()
+            try:
+                await self._tick_task
+            except asyncio.CancelledError:
+                pass  # expected: we just cancelled it ourselves
+            except Exception:
+                log.exception("client tick loop raised while closing")
+            self._tick_task = None
+        # Reader and tick are both fully stopped by this point, so nothing
+        # else can be concurrently touching expectations or the decoder.
+        await self._clear_expectations()
+        self._decoder.reset()
         await self._outbound.stop()
         await self._transport.close()
 
@@ -160,22 +251,35 @@ class AsyncQuMixer:
         self._reply_event.clear()
         self._sync_event.clear()
         self._transport.set_state(ConnectionState.SYNCING)
-        # PRD 9.1: the all-call form is required here, because the mixer's
-        # MIDI channel is unknown until it replies.
-        await self._transport.send(get_system_state(self.ipad_flag))
+        # PRD 9.3.8: every update ingested while this is True is tagged
+        # Source.SYNC and fires no external_change. Must stay True for the
+        # *entire* burst, including the flush-on-``14`` in _on_sysex -- that
+        # flush runs synchronously inside the read loop's handling of the
+        # same end-of-sync message that wakes the wait_for below, so it is
+        # guaranteed to complete before this method's continuation (and its
+        # `finally`) ever runs.
+        self._syncing = True
         try:
-            await asyncio.wait_for(self._reply_event.wait(), timeout=self.reply_timeout)
-        except asyncio.TimeoutError as exc:
-            raise QuConnectionError(
-                _NOT_A_QU_HINT.format(host=self.host, port=self.port, timeout=self.reply_timeout)
-            ) from exc
-        try:
-            await asyncio.wait_for(self._sync_event.wait(), timeout=self.sync_timeout)
-        except asyncio.TimeoutError as exc:
-            raise SyncTimeoutError(
-                f"{self.host}:{self.port} replied to the state request but sent no end-of-sync "
-                f"marker within {self.sync_timeout}s; the state push failed"
-            ) from exc
+            # PRD 9.1: the all-call form is required here, because the
+            # mixer's MIDI channel is unknown until it replies.
+            await self._transport.send(get_system_state(self.ipad_flag))
+            try:
+                await asyncio.wait_for(self._reply_event.wait(), timeout=self.reply_timeout)
+            except asyncio.TimeoutError as exc:
+                raise QuConnectionError(
+                    _NOT_A_QU_HINT.format(
+                        host=self.host, port=self.port, timeout=self.reply_timeout
+                    )
+                ) from exc
+            try:
+                await asyncio.wait_for(self._sync_event.wait(), timeout=self.sync_timeout)
+            except asyncio.TimeoutError as exc:
+                raise SyncTimeoutError(
+                    f"{self.host}:{self.port} replied to the state request but sent no "
+                    f"end-of-sync marker within {self.sync_timeout}s; the state push failed"
+                ) from exc
+        finally:
+            self._syncing = False
         self._transport.set_state(ConnectionState.READY)
 
     # -- writes -------------------------------------------------------------
@@ -314,6 +418,21 @@ class AsyncQuMixer:
         # the 11 reply rather than being refused.
         await self._await_channel(f"set {param} on {ch.label}")
         await self._send(self.encode(ch, param, raw, vx))
+        # Optimistic local write (PRD 10.3): reflect it immediately as
+        # Source.LOCAL, then track it as a pending echo expectation. This
+        # happens unconditionally, even if a resync() is concurrently in
+        # flight -- a resync's snapshot may be older than this write and
+        # overwrite it with a stale Source.SYNC value once ingested, and an
+        # echo of this write arriving during that same window is ingested as
+        # Source.SYNC too (not consumed as an echo), so the expectation can
+        # expire and report UNCONFIRMED even though the console accepted the
+        # write. Narrow and inherent to a snapshot protocol racing a live
+        # write; see task-4.3-report.md.
+        vx_byte = self._resolve_vx(spec, vx)
+        sub = sub_index_for(spec, vx_byte, raw)
+        old, new = self.cache.set(ch, spec.name, sub, raw, Freshness.KNOWN)
+        self.events.emit_change(ChangeEvent(ch, spec.name, sub, old, new, Source.LOCAL))
+        self._expect_echo(ch, spec.name, sub, raw)
 
     # -- inbound ----------------------------------------------------------
 
@@ -326,6 +445,12 @@ class AsyncQuMixer:
                 log.exception("error handling inbound message %r", msg)
 
     def _dispatch(self, msg: MidiMessage) -> None:
+        # Every message is fed to the NRPN decoder, sysex included: a non-CC
+        # message is itself flush trigger (b) in NrpnDecoder.feed(), which is
+        # how the end-of-sync marker below flushes a held update *before*
+        # _on_sysex ever runs (PRD 9.3.7).
+        for update in self._decoder.feed(msg):
+            self._ingest(update)
         if isinstance(msg, SysEx):
             self._on_sysex(msg)
 
@@ -336,7 +461,140 @@ class AsyncQuMixer:
         if parsed.command == c.CMD_SYSTEM_STATE_REPLY:
             self._on_state_reply(parsed)
         elif parsed.command == c.CMD_END_OF_SYNC:
+            # PRD 9.3.7: flush the held update, or the last parameter in the
+            # burst is stranded and the cache is silently one value short.
+            # In practice _dispatch's decoder.feed(msg) above has already
+            # flushed it (this sysex is itself a non-CC flush trigger) --
+            # this call is a deliberate no-op safety net, kept in case
+            # _dispatch's routing ever changes to skip the decoder for sysex.
+            for update in self._decoder.flush():
+                self._ingest(update)
             self._sync_event.set()
+            self.events.emit_sync_complete()
+
+    def _ingest(self, update: RawParamUpdate) -> None:
+        if self._midi_channel is not None and update.midi_channel != self._midi_channel:
+            # MIDI strip traffic lives on N+1 and is a different namespace
+            # entirely (PRD 6.3, 14.7). Slice 11 surfaces it.
+            return
+        try:
+            ch = channel_from_raw(update.ch)
+        except ParameterRangeError:
+            log.debug("update for unassigned CH %#04x; ignoring", update.ch)
+            return
+        spec = REGISTRY.resolve(ch.cls, update.param_id, update.vx)
+        if spec is None:
+            # PRD 5.3: an unrecognised (CH, ID) must not raise. Undocumented
+            # parameters exist.
+            log.debug(
+                "unrecognised parameter: CH %#04x ID %#04x VX %s",
+                update.ch, update.param_id, update.vx,
+            )
+            return
+        raw = spec.domain.clamp_inbound(update.value, spec.name, ch.label)
+        sub = sub_index_for(spec, update.vx, raw)
+
+        if self._syncing:
+            old, new = self.cache.set(ch, spec.name, sub, raw, Freshness.KNOWN)
+            self.events.emit_change(ChangeEvent(ch, spec.name, sub, old, new, Source.SYNC))
+            return
+
+        if self._consume_expectation(ch, spec.name, sub, raw):
+            # An echo of our own write: update the cache, emit no external
+            # change, so a fader-follow script cannot oscillate (PRD 10.3).
+            old, new = self.cache.set(ch, spec.name, sub, raw, Freshness.KNOWN)
+            self.events.emit_change(ChangeEvent(ch, spec.name, sub, old, new, Source.LOCAL))
+            return
+
+        old, new = self.cache.set(ch, spec.name, sub, raw, Freshness.KNOWN)
+        self.events.emit_change(ChangeEvent(ch, spec.name, sub, old, new, Source.MIXER))
+
+    def _consume_expectation(
+        self, ch: ChannelId, param: str, sub: int | None, raw: int
+    ) -> bool:
+        """FIFO, one echo per expectation (PRD 10.3).
+
+        Only the value at the *front* of the queue is compared -- a value
+        arriving that matches some other, non-front expectation in the queue
+        is external, not an echo, per the PRD 10.3 rule.
+        """
+        key = self.cache.key(ch, param, sub)
+        queue = self._expectations.get(key)
+        if not queue:
+            return False
+        if queue[0][0] != raw:
+            return False
+        queue.popleft()
+        return True
+
+    def _expect_echo(self, ch: ChannelId, param: str, sub: int | None, raw: int) -> None:
+        key = self.cache.key(ch, param, sub)
+        deadline = time.monotonic() + self.echo_window
+        entry = (raw, deadline)
+        self._expectations[key].append(entry)
+        task = asyncio.create_task(self._expire_expectation(ch, param, sub, entry))
+        self._expectation_tasks.add(task)
+        task.add_done_callback(self._expectation_tasks.discard)
+
+    async def _expire_expectation(
+        self, ch: ChannelId, param: str, sub: int | None, entry: tuple[int, float]
+    ) -> None:
+        await asyncio.sleep(self.echo_window)
+        key = self.cache.key(ch, param, sub)
+        queue = self._expectations.get(key)
+        if not queue:
+            return
+        try:
+            # Remove exactly the (raw, deadline) tuple this task was
+            # scheduled for -- not just any entry with a matching raw value.
+            # Two expectations for the same value but different deadlines
+            # (e.g. two quick writes of the same raw) would otherwise let one
+            # expiry task delete the *other* expectation's still-live entry,
+            # downgrading it before its own deadline and leaving its own
+            # expiry task to silently no-op against an already-empty slot.
+            queue.remove(entry)
+        except ValueError:
+            return  # already consumed by a genuine echo/surface move
+        # PRD 10.3: the mixer may have ignored the write -- wrong VX, invalid
+        # on this channel class, console in Group mode. Do not leave the
+        # value looking KNOWN.
+        self.cache.downgrade(ch, param, sub, Freshness.UNCONFIRMED)
+        log.info(
+            "write to %s %s was never confirmed by the console; the message may have "
+            "been ignored (check VX, channel class, and Group mode -- PRD 14.6)",
+            ch.label, param,
+        )
+        self.events.emit_write_unconfirmed(ch, param, sub)
+
+    async def _clear_expectations(self) -> None:
+        """PRD 4.4: drop pending write expectations on disconnect, or the
+        first post-reconnect surface move is misclassified as an echo.
+
+        Cancels every pending expiry task and waits for the cancellation to
+        actually land before returning, matching how ``close()`` tears down
+        ``_reader_task``/``_tick_task`` -- an unawaited cancel() can leave a
+        task pending when the loop shuts down, which is what
+        ``filterwarnings = ["error"]`` turns into a hard failure.
+        """
+        tasks = list(self._expectation_tasks)
+        for task in tasks:
+            task.cancel()
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+        self._expectation_tasks.clear()
+        self._expectations.clear()
+
+    async def _tick_loop(self) -> None:
+        """Flush trigger (c): PENDING_FLUSH_TIMEOUT of inbound silence.
+
+        Without this, a held update with no following CC (or sysex) simply
+        never surfaces -- NrpnDecoder.tick() is a cheap no-op whenever
+        nothing is currently held, so this costs nothing between writes.
+        """
+        while True:
+            await asyncio.sleep(c.PENDING_FLUSH_TIMEOUT)
+            for update in self._decoder.tick():
+                self._ingest(update)
 
     def _on_state_reply(self, parsed: QuSysex) -> None:
         if self._reply_event.is_set():

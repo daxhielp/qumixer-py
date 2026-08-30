@@ -39,6 +39,7 @@ class FakeQu:
         sync_delay: float = 0.0,
         keepalive_interval: float = 0.3,
         scene: dict[tuple[int, int, int], int] | None = None,
+        drop_last_vx: bool = False,
     ) -> None:
         self.model = model
         self.midi_channel = midi_channel
@@ -48,9 +49,11 @@ class FakeQu:
         self.send_end_marker = send_end_marker
         self.sync_delay = sync_delay
         self.keepalive_interval = keepalive_interval
+        self.drop_last_vx = drop_last_vx
 
         self.port = 0
         self.connections = 0
+        self.sync_count = 0
         self.received = bytearray()
         self.mutes: dict[int, bool] = {}
         #: keyed (ch, param_id, vx); seeded from ``scene`` and updated by
@@ -144,7 +147,16 @@ class FakeQu:
         if parsed.command == c.CMD_GET_SYSTEM_STATE:
             await self._do_sync(writer)
 
+    async def send_surface_move(self, ch: int, param_id: int, value: int, vx: int) -> None:
+        """Emit an unsolicited NRPN, as a physical control move would."""
+        if self._client is None:
+            raise RuntimeError("no client connected")
+        self.state[(ch, param_id, vx)] = value
+        self._client.write(encode_nrpn(self.midi_channel, ch, param_id, value, vx))
+        await self._client.drain()
+
     async def _do_sync(self, writer: asyncio.StreamWriter) -> None:
+        self.sync_count += 1
         writer.write(
             build_sysex(
                 self.midi_channel,
@@ -161,8 +173,14 @@ class FakeQu:
 
     async def _push_state(self, writer: asyncio.StreamWriter) -> None:
         """Emit the canned scene as an NRPN burst (PRD 9.3)."""
-        for (ch, param_id, vx), value in self._scene.items():
-            writer.write(encode_nrpn(self.midi_channel, ch, param_id, value, vx))
+        items = list(self._scene.items())
+        for index, ((ch, param_id, vx), value) in enumerate(items):
+            data = encode_nrpn(self.midi_channel, ch, param_id, value, vx)
+            if self.drop_last_vx and index == len(items) - 1:
+                # PRD 9.3.7: a burst ending without its Data LSB. The client
+                # must flush the held update when 14 arrives.
+                data = data[:9]
+            writer.write(data)
         await writer.drain()
 
 
