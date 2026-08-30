@@ -40,6 +40,76 @@ async def cmd_set(args: argparse.Namespace) -> int:
         return 0
 
 
+async def cmd_monitor(args: argparse.Namespace) -> int:
+    from qumidi.events import ChangeEvent, Source
+    from qumidi.protocol.channels import parse_channel_ref
+
+    channel = parse_channel_ref(args.channel) if args.channel else None
+
+    def show(event: ChangeEvent) -> None:
+        if event.source is Source.SYNC and not args.include_sync:
+            return
+        tag = {Source.LOCAL: "local", Source.MIXER: "SURFACE", Source.SYNC: "sync"}[event.source]
+        sub = "" if event.sub_index is None else f"[{event.sub_index}]"
+        old = "?" if event.old.raw is None else f"{event.old.raw:#04x}"
+        print(
+            f"{tag:8} {event.channel.label:<14} {event.param}{sub:<6} "
+            f"{old} -> {event.new.raw:#04x}"
+        )
+
+    # The subscription must exist *before* connect() runs: the entire sync
+    # burst (every Source.SYNC event --include-sync exists to show) happens
+    # inside connect(), and on_change() only ever sees events emitted after
+    # it is called. Constructing the mixer and subscribing first, then using
+    # `async with mixer:` instead of `async with AsyncQuMixer(...) as mixer:`,
+    # is what makes --include-sync see anything at all.
+    mixer = AsyncQuMixer(args.host, port=args.port)
+    mixer.on_change(show, channel=channel, param=args.param)
+    async with mixer:
+        await mixer.wait_synced()
+        print(f"monitoring {args.host}; move something on the console. Ctrl-C to stop.")
+        await asyncio.Event().wait()
+    return 0
+
+
+async def cmd_dump_state(args: argparse.Namespace) -> int:
+    import json
+
+    async with AsyncQuMixer(args.host, port=args.port) as mixer:
+        await mixer.wait_synced()
+        rows = sorted(
+            mixer.cache.items(), key=lambda item: (item[0][0], item[0][2], item[0][3] or -1)
+        )
+        entries: list[dict[str, object]] = [
+            {
+                "channel_raw": raw_ch,
+                "channel_class": cls.name,
+                "param": param,
+                "sub_index": sub,
+                "raw": value.raw,
+                "freshness": value.freshness.name,
+            }
+            for (raw_ch, cls, param, sub), value in rows
+        ]
+        if args.json:
+            print(json.dumps(
+                {"box_id": mixer.box_id, "firmware": mixer.firmware, "values": entries},
+                indent=2,
+            ))
+        else:
+            from qumidi.protocol.channels import channel_from_raw
+
+            print(f"BoxID {mixer.box_id}, firmware {mixer.firmware}, {len(entries)} values")
+            for (raw_ch, _cls, param, sub_index), value in rows:
+                label = channel_from_raw(raw_ch).label
+                sub_display = "" if sub_index is None else f"[{sub_index}]"
+                print(
+                    f"  {label:<14} {param}{sub_display:<6} "
+                    f"{value.raw:#04x}  {value.freshness.name}"
+                )
+    return 0
+
+
 async def cmd_probe(args: argparse.Namespace) -> int:
     async with AsyncQuMixer(args.host, port=args.port) as mixer:
         await mixer.wait_synced()
@@ -95,6 +165,24 @@ def build_parser() -> argparse.ArgumentParser:
     setp.add_argument("value", help="value, e.g. on/off, -6db, raw:0x62")
     setp.add_argument("--to", help="send destination for send parameters, e.g. mix:3, lr")
     setp.set_defaults(func=cmd_set)
+
+    mon = sub.add_parser(
+        "monitor", parents=[common], help="print state changes as they arrive"
+    )
+    mon.add_argument("--host", required=True)
+    mon.add_argument("--port", type=int, default=c.QU_TCP_PORT)
+    mon.add_argument("--channel", help="filter, e.g. input:6")
+    mon.add_argument("--param", help="filter, e.g. fader")
+    mon.add_argument("--include-sync", action="store_true", help="also show the sync burst")
+    mon.set_defaults(func=cmd_monitor)
+
+    dump = sub.add_parser(
+        "dump-state", parents=[common], help="sync, print the whole cache, exit"
+    )
+    dump.add_argument("--host", required=True)
+    dump.add_argument("--port", type=int, default=c.QU_TCP_PORT)
+    dump.add_argument("--json", action="store_true")
+    dump.set_defaults(func=cmd_dump_state)
 
     return ap
 
