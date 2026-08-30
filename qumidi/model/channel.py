@@ -13,7 +13,7 @@ from qumidi.model.base import (
     SectionProxy,
 )
 from qumidi.protocol.channels import ChannelId, Mix
-from qumidi.protocol.registry import geq_band_for_freq
+from qumidi.protocol.registry import geq_band_for_freq, send_target_vx
 
 if TYPE_CHECKING:  # pragma: no cover
     from qumidi.client_async import AsyncQuMixer
@@ -194,15 +194,30 @@ class Preamp:
         await self._mixer.set(self._channel, "dsnake_gain", db=db, vx=socket.raw)
 
     async def set_phantom(self, on: bool) -> None:
+        """Set 48V phantom power on whichever preamp this channel is using.
+
+        Dispatches the same way set_gain_db() does, and raises rather than
+        guessing if the routing is unknown (PRD 7.2) -- phantom power is
+        safety-relevant, so this must never fall back to the local preamp
+        just because the routing hasn't been reported yet.
+        """
         source = self._mixer.get(self._channel, "preamp_source")
-        if source.raw:
-            socket = self._mixer.get(self._channel, "dsnake_patch")
-            if socket.raw is not None:
-                await self._mixer.set(
-                    self._channel, "dsnake_48v", raw=1 if on else 0, vx=socket.raw
-                )
-                return
-        await self._mixer.set(self._channel, "local_48v", raw=1 if on else 0)
+        if source.raw is None:
+            raise ValueUnknownError(
+                f"{self._channel.label}: the console has not reported whether this "
+                f"channel uses its local or dSNAKE preamp, so the phantom-power write "
+                f"cannot be routed. Set local_48v or dsnake_48v explicitly, or resync."
+            )
+        if not source.raw:
+            await self._mixer.set(self._channel, "local_48v", raw=1 if on else 0)
+            return
+        socket = self._mixer.get(self._channel, "dsnake_patch")
+        if socket.raw is None:
+            raise ValueUnknownError(
+                f"{self._channel.label} uses its dSNAKE preamp but the console has not "
+                f"reported which socket it is patched to (dsnake_patch is receive-only)"
+            )
+        await self._mixer.set(self._channel, "dsnake_48v", raw=1 if on else 0, vx=socket.raw)
 
 
 class Send:
@@ -214,12 +229,24 @@ class Send:
         self._target = target
 
     @property
+    def _sub(self) -> int:
+        """The cache sub-index a send-scoped write to this target lands under.
+
+        SendTarget.sub_index() (qumidi/protocol/params.py) resolves to the
+        target's *wire* VX byte, not None -- the same byte AsyncQuMixer.set()
+        computes via send_target_vx() before storing the write. A read must
+        resolve the identical byte or it will always miss the cache entry its
+        own write just populated.
+        """
+        return send_target_vx(self._target, self._mixer.caps)
+
+    @property
     def level(self) -> ParamProxy:
-        return ParamProxy(self._mixer, self._channel, "send_level", sub=None, vx=self._target)
+        return ParamProxy(self._mixer, self._channel, "send_level", sub=self._sub, vx=self._target)
 
     @property
     def pan(self) -> ParamProxy:
-        return ParamProxy(self._mixer, self._channel, "pan", sub=None, vx=self._target)
+        return ParamProxy(self._mixer, self._channel, "pan", sub=self._sub, vx=self._target)
 
     async def set_level_db(self, db: float) -> None:
         await self._mixer.set(self._channel, "send_level", db=db, vx=self._target)

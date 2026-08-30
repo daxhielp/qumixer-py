@@ -98,6 +98,97 @@ async def test_ch_pan_is_sugar_for_the_lr_send(fake_qu_factory) -> None:  # type
     assert "send(Mix.LR)" in (type(mixer.input(6)).pan.__doc__ or "")
 
 
+async def test_send_level_and_pan_reads_mirror_their_own_writes(fake_qu_factory) -> None:  # type: ignore[no-untyped-def]
+    # Regression: send_level/pan use SendTarget VX mode, whose sub_index()
+    # always resolves to the target's wire VX byte, never None -- a read
+    # that looked under sub=None could never see its own write land.
+    fake = await fake_qu_factory(scene={})
+    async with AsyncQuMixer("127.0.0.1", port=fake.port) as mixer:
+        await mixer.wait_synced()
+        send = mixer.input(6).send(Mix.MIX3)
+        await send.set_level_db(-12.0)
+        assert send.level.value.freshness is Freshness.KNOWN
+        assert send.level.db == pytest.approx(-12.0, abs=0.5)
+
+        await send.set_pre(True)  # a second send-scoped write on the same target
+
+        pan = mixer.input(6).pan  # PRD 7.2 sugar for send(Mix.LR).pan
+        await pan.set_raw(0x10)
+        assert pan.value.freshness is Freshness.KNOWN
+        assert pan.raw == 0x10
+
+
+async def test_preamp_set_gain_db_routes_to_local_when_known(fake_qu_factory) -> None:  # type: ignore[no-untyped-def]
+    fake = await fake_qu_factory(scene={(0x25, 0x57, 0x00): 0x00})  # local preamp
+    async with AsyncQuMixer("127.0.0.1", port=fake.port) as mixer:
+        await mixer.wait_synced()
+        await mixer.input(6).preamp.set_gain_db(10.0)
+        await asyncio.sleep(0.05)
+        assert (0x25, 0x19, 0x07) in fake.state  # local_gain
+
+
+async def test_preamp_set_gain_db_raises_when_routing_unknown(fake_qu_factory) -> None:  # type: ignore[no-untyped-def]
+    fake = await fake_qu_factory(scene={})
+    async with AsyncQuMixer("127.0.0.1", port=fake.port) as mixer:
+        await mixer.wait_synced()
+        with pytest.raises(ValueUnknownError):
+            await mixer.input(6).preamp.set_gain_db(10.0)
+
+
+async def test_preamp_set_phantom_routes_to_dsnake_when_known(fake_qu_factory) -> None:  # type: ignore[no-untyped-def]
+    fake = await fake_qu_factory(
+        scene={(0x25, 0x57, 0x00): 0x01, (0x25, 0x5D, 0x00): 0x05}  # dSNAKE, socket 5
+    )
+    async with AsyncQuMixer("127.0.0.1", port=fake.port) as mixer:
+        await mixer.wait_synced()
+        await mixer.input(6).preamp.set_phantom(True)
+        await asyncio.sleep(0.05)
+        assert fake.state[(0x25, 0x5A, 0x05)] == 0x01  # dsnake_48v, socket 5
+
+
+async def test_preamp_set_phantom_raises_rather_than_defaulting_to_local(  # type: ignore[no-untyped-def]
+    fake_qu_factory,
+) -> None:
+    # PRD 7.2 / the plan's "never synthesize a default value": phantom power
+    # is safety-relevant, so an unknown routing must raise, not silently fall
+    # back to firing 48V into whichever preamp happens to be local.
+    fake = await fake_qu_factory(scene={})
+    async with AsyncQuMixer("127.0.0.1", port=fake.port) as mixer:
+        await mixer.wait_synced()
+        with pytest.raises(ValueUnknownError):
+            await mixer.input(6).preamp.set_phantom(True)
+        await asyncio.sleep(0.05)
+        assert (0x25, 0x69, 0x07) not in fake.state  # local_48v was never written
+
+
+async def test_geq_band_round_trip(fake_qu_factory) -> None:  # type: ignore[no-untyped-def]
+    fake = await fake_qu_factory(scene={})
+    async with AsyncQuMixer("127.0.0.1", port=fake.port) as mixer:
+        await mixer.wait_synced()
+        await mixer.lr.geq.set_band_db(3.0, band=5)
+        assert mixer.lr.geq.band(5).db == pytest.approx(3.0, abs=0.5)
+
+
+async def test_gate_and_peq_band_round_trip(fake_qu_factory) -> None:  # type: ignore[no-untyped-def]
+    fake = await fake_qu_factory(scene={})
+    async with AsyncQuMixer("127.0.0.1", port=fake.port) as mixer:
+        await mixer.wait_synced()
+        ch = mixer.input(6)
+        await ch.gate.threshold.set_raw(0x30)
+        assert ch.gate.threshold.raw == 0x30
+        await ch.peq.lm.gain.set_raw(0x50)
+        assert ch.peq.lm.gain.raw == 0x50
+
+
+async def test_group_fader_round_trip(fake_qu_factory) -> None:  # type: ignore[no-untyped-def]
+    # A new mixer accessor beyond input().
+    fake = await fake_qu_factory(scene={})
+    async with AsyncQuMixer("127.0.0.1", port=fake.port) as mixer:
+        await mixer.wait_synced()
+        await mixer.group(1).fader.set_raw(0x50)
+        assert mixer.group(1).fader.raw == 0x50
+
+
 async def test_the_facade_contains_no_protocol_constants() -> None:
     # The critical invariant from PRD 3: layer 5 is a thin proxy over layer 4.
     import pathlib
