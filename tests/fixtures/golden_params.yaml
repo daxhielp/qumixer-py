@@ -92,3 +92,75 @@
   value: 0x01
   vx: null
   expected: "B0 63 25 B0 62 51 B0 06 01 B0 26 07"
+
+- param: usb_source
+  channel: 0x25
+  value: 0x01
+  vx: null
+  expected: "B0 63 25 B0 62 12 B0 06 01 B0 26 00"    # NOTE: VX 00, not 07
+
+- param: preamp_source
+  channel: 0x25
+  value: 0x01
+  vx: null
+  expected: "B0 63 25 B0 62 57 B0 06 01 B0 26 00"
+
+- param: local_gain
+  channel: 0x25
+  value: 0x0A          # 0 dB
+  vx: null
+  expected: "B0 63 25 B0 62 19 B0 06 0A B0 26 07"
+
+- param: local_48v
+  channel: 0x25
+  value: 0x01
+  vx: null
+  expected: "B0 63 25 B0 62 69 B0 06 01 B0 26 07"
+
+- param: dsnake_gain
+  channel: 0x25
+  value: 0x50          # +40 dB on the dSNAKE curve
+  vx: 0x00             # socket boundary, low
+  expected: "B0 63 25 B0 62 58 B0 06 50 B0 26 00"
+
+- param: dsnake_gain
+  channel: 0x25
+  value: 0x50
+  vx: 0x27             # socket boundary, high
+  expected: "B0 63 25 B0 62 58 B0 06 50 B0 26 27"
+
+- param: dsnake_pad
+  channel: 0x25
+  value: 0x01
+  vx: 0x05
+  expected: "B0 63 25 B0 62 59 B0 06 01 B0 26 05"
+
+- param: dsnake_48v
+  channel: 0x25
+  value: 0x01
+  vx: 0x05
+  expected: "B0 63 25 B0 62 5A B0 06 01 B0 26 05"
+
+- param: digital_trim
+  channel: 0x25
+  value: 0x40          # 0 dB
+  vx: null
+  expected: "B0 63 25 B0 62 52 B0 06 40 B0 26 07"
+
+- param: stereo_trim
+  channel: 0x40        # ST1
+  value: 0x40
+  vx: null
+  expected: "B0 63 40 B0 62 54 B0 06 40 B0 26 07"
+
+- param: polarity
+  channel: 0x25
+  value: 0x01
+  vx: null
+  expected: "B0 63 25 B0 62 6A B0 06 01 B0 26 07"
+
+- param: insert
+  channel: 0x25
+  value: 0x01
+  vx: null
+  expected: "B0 63 25 B0 62 6B B0 06 01 B0 26 07"

@@ -27,6 +27,8 @@ from qumidi.midi.messages import MidiMessage, NoteOn, SysEx
 from qumidi.midi.nrpn import NrpnDecoder, RawParamUpdate, encode_nrpn
 from qumidi.protocol import constants as c
 from qumidi.protocol.channels import (
+    GLOBAL,
+    ChannelClass,
     ChannelId,
     Model,
     ModelCaps,
@@ -491,6 +493,8 @@ class AsyncQuMixer:
                 update.ch, update.param_id, update.vx,
             )
             return
+        if ChannelClass.GLOBAL in spec.applies_to:
+            ch = GLOBAL
         raw = spec.domain.clamp_inbound(update.value, spec.name, ch.label)
         sub = sub_index_for(spec, update.vx, raw)
 

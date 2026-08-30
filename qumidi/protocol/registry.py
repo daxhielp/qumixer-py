@@ -28,13 +28,16 @@ from qumidi.protocol.channels import (
 )
 from qumidi.protocol.params import (
     Boolean,
+    Direction,
+    DsnakeSocket,
     Fixed,
     Interpolated,
     ParamSpec,
     Raw7Bit,
     SendTarget,
+    Tier,
 )
-from qumidi.protocol.units import FADER_TAPER
+from qumidi.protocol.units import DSNAKE_GAIN_TAPER, FADER_TAPER, LOCAL_GAIN_TAPER, TRIM_TAPER
 
 log = logging.getLogger(__name__)
 
@@ -161,6 +164,78 @@ SPECS: list[ParamSpec] = [
         domain=Boolean(),
         applies_to=_FADER_CLASSES,
     ),
+    # --- Input source and preamp (PRD 7.2) ---
+    # NOTE the VX filler alternates: 12, 57 and 5D use 0x00 while the rest of
+    # this family uses 0x07. Transcribed literally, not inferred.
+    ParamSpec(
+        name="usb_source", nrpn_id=0x12, vx=Fixed(0x00), domain=Boolean(),
+        applies_to=_INPUTS, notes="0x00 preamp, 0x01 USB.",
+    ),
+    ParamSpec(
+        name="preamp_source", nrpn_id=0x57, vx=Fixed(0x00), domain=Boolean(),
+        applies_to=_INPUTS, notes="0x00 local, 0x01 dSNAKE. ch.preamp dispatches on this.",
+    ),
+    ParamSpec(
+        name="dsnake_patch", nrpn_id=0x5D, vx=Fixed(0x00),
+        domain=Raw7Bit(lo=0x00, hi=0x27), applies_to=_INPUTS,
+        direction=Direction.RX_ONLY,
+        notes="PRD 7.2: RX only. The channel->socket map, and the only way to know "
+        "which socket a channel's remote preamp lives on.",
+    ),
+    ParamSpec(
+        name="local_gain", nrpn_id=0x19, vx=Fixed(0x07),
+        domain=Interpolated(lo=0x00, hi=0x7F, taper=LOCAL_GAIN_TAPER),
+        applies_to=frozenset({ChannelClass.INPUT}),
+        notes="-5..+60 dB (PRD 8.2). Local preamp has NO pad parameter.",
+    ),
+    ParamSpec(
+        name="local_48v", nrpn_id=0x69, vx=Fixed(0x07), domain=Boolean(),
+        applies_to=frozenset({ChannelClass.INPUT}),
+    ),
+    ParamSpec(
+        name="dsnake_gain", nrpn_id=0x58, vx=DsnakeSocket(),
+        domain=Interpolated(lo=0x00, hi=0x7F, taper=DSNAKE_GAIN_TAPER),
+        applies_to=frozenset({ChannelClass.INPUT}), tier=Tier.EXPERIMENTAL,
+        notes="+5..+60 dB (PRD 8.3) -- a different curve from local gain. Socket in VX; "
+        "whether CH addresses anything is an M6 question (PRD 7.2), so the cache keys "
+        "on the socket under the synthetic DSNAKE channel.",
+    ),
+    ParamSpec(
+        name="dsnake_pad", nrpn_id=0x59, vx=DsnakeSocket(), domain=Boolean(),
+        applies_to=frozenset({ChannelClass.INPUT}), tier=Tier.EXPERIMENTAL,
+        notes="0x00 out, 0x01 in. Only dSNAKE has a pad.",
+    ),
+    ParamSpec(
+        name="dsnake_48v", nrpn_id=0x5A, vx=DsnakeSocket(), domain=Boolean(),
+        applies_to=frozenset({ChannelClass.INPUT}), tier=Tier.EXPERIMENTAL,
+    ),
+    ParamSpec(
+        name="digital_trim", nrpn_id=0x52, vx=Fixed(0x07),
+        domain=Interpolated(lo=0x00, hi=0x7F, taper=TRIM_TAPER),
+        applies_to=frozenset({ChannelClass.INPUT}),
+        notes="-24..+24 dB, 0 dB = 0x40. Applies when the USB source is selected.",
+    ),
+    ParamSpec(
+        name="stereo_trim", nrpn_id=0x54, vx=Fixed(0x07),
+        domain=Interpolated(lo=0x00, hi=0x7F, taper=TRIM_TAPER),
+        applies_to=frozenset({ChannelClass.STEREO_INPUT}),
+    ),
+    ParamSpec(
+        name="polarity", nrpn_id=0x6A, vx=Fixed(0x07), domain=Boolean(),
+        applies_to=_INPUTS, notes="0x00 normal, 0x01 reversed.",
+    ),
+    ParamSpec(
+        name="insert", nrpn_id=0x6B, vx=Fixed(0x07), domain=Boolean(),
+        applies_to=_INPUTS | _MIXES, notes="0x00 out, 0x01 in.",
+    ),
+    ParamSpec(
+        name="group_mode", nrpn_id=0x5E, vx=Fixed(0x00),
+        domain=Boolean(), applies_to=frozenset({ChannelClass.GLOBAL}),
+        direction=Direction.RX_ONLY, tier=Tier.EXPERIMENTAL,
+        notes="PRD 7.2: console-global with no documented CH. Stored under the synthetic "
+        "GLOBAL channel and accepted from any CH until M6 records the real one. "
+        "0x00 group mode, 0x01 mix mode.",
+    ),
 ]
 
 
@@ -182,6 +257,11 @@ class Registry:
                 self._by_class_id[(cls, spec.nrpn_id)] = spec
                 if isinstance(spec.vx, Fixed):
                     self._by_class_id_vx[(cls, spec.nrpn_id, spec.vx.value)] = spec
+        # PRD 7.2: Group Mode has no documented CH, so accept it from any class.
+        for spec in self._specs:
+            if ChannelClass.GLOBAL in spec.applies_to:
+                for cls in ChannelClass:
+                    self._by_class_id.setdefault((cls, spec.nrpn_id), spec)
 
     def __iter__(self) -> Iterator[ParamSpec]:
         return iter(self._specs)
