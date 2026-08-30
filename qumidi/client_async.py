@@ -19,6 +19,7 @@ from qumidi.errors import (
     NotSyncedError,
     ParameterRangeError,
     QuConnectionError,
+    QuConnectionLostError,
     ReadOnlyParameterError,
     SyncTimeoutError,
     UnknownParameterError,
@@ -85,6 +86,10 @@ class AsyncQuMixer:
         name_request_timeout: float = c.NAME_REQUEST_TIMEOUT,
         name_request_retries: int = c.NAME_REQUEST_RETRIES,
         scene_settle_delay: float = c.SCENE_SETTLE_DELAY,
+        auto_reconnect: bool = True,
+        reconnect_backoff_min: float = c.RECONNECT_BACKOFF_MIN,
+        reconnect_backoff_max: float = c.RECONNECT_BACKOFF_MAX,
+        max_reconnect_attempts: int | None = None,
     ) -> None:
         self.host = host
         self.port = port
@@ -101,7 +106,22 @@ class AsyncQuMixer:
         self.names: dict[ChannelId, str | None] = {}
         self._name_waiters: dict[int, asyncio.Future[str]] = {}
 
-        self._transport = transport if transport is not None else TcpTransport(host, port)
+        # PRD 4.4: these are only ever consulted when building the *default*
+        # transport below -- an explicitly-passed transport= object is never
+        # second-guessed, matching how every other constructor kwarg here
+        # (max_send_rate, ...) is handled.
+        self._transport = (
+            transport
+            if transport is not None
+            else TcpTransport(
+                host,
+                port,
+                auto_reconnect=auto_reconnect,
+                reconnect_backoff_min=reconnect_backoff_min,
+                reconnect_backoff_max=reconnect_backoff_max,
+                max_reconnect_attempts=max_reconnect_attempts,
+            )
+        )
         self._outbound = OutboundQueue(self._transport.send, max_send_rate=max_send_rate)
         self._reader_task: asyncio.Task[None] | None = None
         self._tick_task: asyncio.Task[None] | None = None
@@ -130,6 +150,15 @@ class AsyncQuMixer:
         #: flush-on-``14`` in ``_on_sysex`` (PRD 9.3.8).
         self._syncing = False
         self._transport.on_state_change(self.events.emit_connection_state)
+        if isinstance(self._transport, TcpTransport):
+            self._transport.set_reconnect_hook(self._after_reconnect)
+        self._transport.on_state_change(self._on_transport_state)
+
+        # -- Slice 8: reconnect ----------------------------------------------
+        #: Placeholders until Slice 10 adds real meter subscriptions: kept
+        #: here (rather than added when that slice lands) so _after_reconnect
+        #: never needs editing to grow meter re-enable support later.
+        self._meters_enable_count = 0
 
         # -- Slice 7: scene recall ------------------------------------------
         #: 1-based, matching the console's own display. See the
@@ -235,6 +264,71 @@ class AsyncQuMixer:
     async def resync(self) -> None:
         """Re-run the full state handshake against a live connection."""
         await self._sync()
+
+    # -- reconnect (PRD 4.4) -------------------------------------------------
+
+    def _on_transport_state(self, state: ConnectionState) -> None:
+        if state in (ConnectionState.RECONNECTING, ConnectionState.DISCONNECTED):
+            # PRD 4.4: mark the ENTIRE cache STALE before re-running the sync.
+            # Never serve pre-disconnect values as current.
+            self.cache.mark_all_stale()
+            # _clear_expectations() is async -- it cancels and awaits
+            # in-flight echo-expiry tasks -- but Transport.set_state() calls
+            # this callback synchronously, so it cannot be awaited here.
+            # Firing it as a fire-and-forget coroutine would leave it
+            # unawaited (a RuntimeWarning, a hard failure under this
+            # project's filterwarnings = ["error"]), and spawning it as a
+            # background task risks close() finishing before a task created
+            # by this exact same transition (close() -> transport.close() ->
+            # a final DISCONNECTED) ever gets to run. A plain dict clear
+            # achieves the same outcome without either problem: every
+            # in-flight _expire_expectation task re-reads
+            # self._expectations by key when it wakes, and already no-ops
+            # safely (see its own docstring) if its entry is gone -- so this
+            # drops every expectation immediately, and any task still
+            # sleeping past its now-pointless deadline self-discards via its
+            # existing done-callback, or is cancelled for good the next time
+            # close() (or another _clear_expectations() call) actually runs.
+            self._expectations.clear()
+            self._outbound.clear()
+            self._decoder.reset()
+            self._ready_event.clear()
+            self._sync_event.clear()
+
+    async def _reenable_meters(self) -> None:
+        """Placeholder until Slice 10 adds real meter subscriptions."""
+
+    async def _after_reconnect(self) -> None:
+        """Re-establish everything the connection carried (PRD 4.4)."""
+        previous_box_id = self._box_id
+        # Re-learn N, BoxID and firmware every time. The operator may have
+        # changed the console's MIDI channel, or the host may now be a
+        # different console at the same IP.
+        self._box_id = None
+        self._firmware = None
+        self._midi_channel = None
+        self._caps = None
+        # _sync() already sweeps names (when sync_names is on), sets
+        # _ready_event and emits SyncComplete internally on every call it
+        # makes -- see its own body. Do not repeat any of that here: it is
+        # exactly the double-sweep trap recall_scene()'s own comment already
+        # warns about for its resync() call, and repeating it here would run
+        # the entire paced name sweep a second (or, on a changed BoxID,
+        # third) time on every reconnect.
+        await self._sync()
+        if previous_box_id is not None and self._box_id != previous_box_id:
+            log.warning(
+                "BoxID changed from %s to %s across the reconnect; rebuilding the cache "
+                "from empty rather than reusing keys for a different model",
+                previous_box_id,
+                self._box_id,
+            )
+            self.cache.clear()
+            self.names.clear()
+            await self._sync()
+        if self._meters_enable_count > 0:
+            await self._reenable_meters()
+        self._ready_event.set()
 
     # -- lifecycle --------------------------------------------------------
 
@@ -406,6 +500,12 @@ class AsyncQuMixer:
 
     async def _send(self, data: bytes) -> None:
         """The single funnel for every control write (PRD 4.5)."""
+        if not self._transport.is_connected and not getattr(
+            self._transport, "auto_reconnect", False
+        ):
+            raise QuConnectionLostError(
+                f"connection to {self.host}:{self.port} was lost and auto_reconnect is off"
+            )
         await self._outbound.send(data)
 
     async def mute(self, ch: ChannelId, muted: bool) -> None:
@@ -562,14 +662,27 @@ class AsyncQuMixer:
         await self._send(self.encode(ch, param, raw, vx))
         # Optimistic local write (PRD 10.3): reflect it immediately as
         # Source.LOCAL, then track it as a pending echo expectation. This
-        # happens unconditionally, even if a resync() is concurrently in
-        # flight -- a resync's snapshot may be older than this write and
-        # overwrite it with a stale Source.SYNC value once ingested, and an
-        # echo of this write arriving during that same window is ingested as
-        # Source.SYNC too (not consumed as an echo), so the expectation can
-        # expire and report UNCONFIRMED even though the console accepted the
-        # write. Narrow and inherent to a snapshot protocol racing a live
-        # write; see task-4.3-report.md.
+        # happens unconditionally, even if a resync (deliberate, or the
+        # automatic one _after_reconnect() drives) is concurrently in
+        # flight. _await_channel can unblock this call as soon as the ``11``
+        # reply sets _midi_channel, which happens early in _sync()'s burst,
+        # well before _syncing goes back to False at the ``14`` marker -- so
+        # a resync's burst can still be arriving for this exact key when the
+        # lines below run. Registering the expectation *first* (immediately,
+        # not deferred past the burst) is what makes that safe: _ingest()
+        # checks for a matching or merely-pending expectation before it ever
+        # consults _syncing, so (a) this write's own echo, whenever it
+        # arrives, is always recognised as an echo rather than mis-tagged
+        # Source.SYNC, and (b) a stale burst value for this same key is
+        # skipped rather than silently overwriting this write, once this
+        # expectation exists to flag the key as having a write in flight.
+        # See task-4.3-report.md and task-8.1-report.md for the fuller
+        # history -- Task 4.3 found the race; Task 8.1 closed it here rather
+        # than in _await_channel, because an earlier draft that delayed
+        # *this* optimistic write until _syncing went False turned out to
+        # reopen the same gap: the echo could still be dispatched, inline,
+        # ahead of that deferred continuation, since asyncio.Event waiters
+        # resume via call_soon rather than synchronously.
         vx_byte = self._resolve_vx(spec, vx)
         sub = sub_index_for(spec, vx_byte, raw)
         old, new = self.cache.set(ch, spec.name, sub, raw, Freshness.KNOWN)
@@ -706,16 +819,36 @@ class AsyncQuMixer:
         raw = spec.domain.clamp_inbound(update.value, spec.name, ch.label)
         sub = sub_index_for(spec, update.vx, raw)
 
-        if self._syncing:
-            old, new = self.cache.set(ch, spec.name, sub, raw, Freshness.KNOWN)
-            self.events.emit_change(ChangeEvent(ch, spec.name, sub, old, new, Source.SYNC))
-            return
-
+        # Task 4.3 -> Task 8.1 (see set()'s own comment for the full
+        # history): checked *before* the _syncing branch below, on purpose.
+        # _await_channel can unblock a set() as soon as the `11` reply is
+        # in, early in a resync's burst and well before _syncing goes back
+        # to False -- so a resync's burst can still be arriving for a key
+        # that has a write in flight. An echo must be recognised as an echo
+        # whether or not a sync happens to be in progress when it lands, or
+        # it would be mis-tagged Source.SYNC here and never consumed,
+        # leaving the expectation to expire and report a spurious
+        # UNCONFIRMED even though the console accepted the write.
         if self._consume_expectation(ch, spec.name, sub, raw):
             # An echo of our own write: update the cache, emit no external
             # change, so a fader-follow script cannot oscillate (PRD 10.3).
             old, new = self.cache.set(ch, spec.name, sub, raw, Freshness.KNOWN)
             self.events.emit_change(ChangeEvent(ch, spec.name, sub, old, new, Source.LOCAL))
+            return
+
+        if self._syncing:
+            if self._expectations.get(self.cache.key(ch, spec.name, sub)):
+                # A write for this exact key is still awaiting its echo (it
+                # just didn't match this particular value, e.g. it's stuck
+                # behind another pending write for the same key). This
+                # snapshot value predates that write, so applying it now
+                # would silently clobber a fresher write with the console's
+                # pre-write state -- leave the cache alone; the pending
+                # write's own eventual echo (or its expiry, if the console
+                # dropped the write) is authoritative for this key instead.
+                return
+            old, new = self.cache.set(ch, spec.name, sub, raw, Freshness.KNOWN)
+            self.events.emit_change(ChangeEvent(ch, spec.name, sub, old, new, Source.SYNC))
             return
 
         old, new = self.cache.set(ch, spec.name, sub, raw, Freshness.KNOWN)

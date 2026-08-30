@@ -45,6 +45,7 @@ class FakeQu:
         ignore_name_sets: bool = False,
         scenes: dict[int, dict[tuple[int, int, int], int]] | None = None,
         scene_names: dict[int, dict[int, str]] | None = None,
+        drop_after_sync: bool = False,
     ) -> None:
         self.model = model
         self.midi_channel = midi_channel
@@ -55,6 +56,9 @@ class FakeQu:
         self.sync_delay = sync_delay
         self.keepalive_interval = keepalive_interval
         self.drop_last_vx = drop_last_vx
+        #: PRD 13.1: drop the connection immediately after the `14` end-of-
+        #: sync marker, so the "drop mid-sync" fault is exercisable.
+        self.drop_after_sync = drop_after_sync
         self.names: dict[int, str] = dict(names or {})
         self.name_requests: list[int] = []
         self.name_silent: set[int] = set(name_silent or ())
@@ -191,6 +195,12 @@ class FakeQu:
         elif parsed.command == c.CMD_SET_NAME and not self.ignore_name_sets:
             self.names[parsed.payload[0]] = parsed.payload[1:].decode("ascii", "replace")
 
+    async def drop_connection(self) -> None:
+        """Cut the client's socket, as pulling the cable would."""
+        if self._client is not None:
+            self._client.close()
+            self._client = None
+
     async def send_surface_move(self, ch: int, param_id: int, value: int, vx: int) -> None:
         """Emit an unsolicited NRPN, as a physical control move would."""
         if self._client is None:
@@ -214,6 +224,8 @@ class FakeQu:
         if self.send_end_marker:
             writer.write(build_sysex(self.midi_channel, bytes([c.CMD_END_OF_SYNC])))
             await writer.drain()
+        if self.drop_after_sync:
+            await self.drop_connection()
 
     async def _push_state(self, writer: asyncio.StreamWriter) -> None:
         """Emit the canned scene as an NRPN burst (PRD 9.3)."""
