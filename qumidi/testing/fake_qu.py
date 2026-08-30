@@ -12,7 +12,7 @@ import argparse
 import asyncio
 import logging
 
-from qumidi.midi.messages import MidiMessage, NoteOn, SysEx
+from qumidi.midi.messages import MidiMessage, NoteOn, ProgramChange, SysEx
 from qumidi.midi.nrpn import NrpnDecoder, encode_nrpn
 from qumidi.midi.parser import MidiStreamParser
 from qumidi.protocol import constants as c
@@ -43,6 +43,8 @@ class FakeQu:
         names: dict[int, str] | None = None,
         name_silent: set[int] | None = None,
         ignore_name_sets: bool = False,
+        scenes: dict[int, dict[tuple[int, int, int], int]] | None = None,
+        scene_names: dict[int, dict[int, str]] | None = None,
     ) -> None:
         self.model = model
         self.midi_channel = midi_channel
@@ -67,6 +69,14 @@ class FakeQu:
         #: every inbound NRPN write.
         self.state: dict[tuple[int, int, int], int] = dict(scene or {})
         self._scene = dict(scene or {})
+        #: scene number (1-based, as sent on the wire in a Program Change) ->
+        #: that scene's parameter map, pushed as `.state`/`._scene` once
+        #: recalled (PRD 7.2).
+        self.scenes: dict[int, dict[tuple[int, int, int], int]] = dict(scenes or {})
+        self.scene_names: dict[int, dict[int, str]] = dict(scene_names or {})
+        #: The last scene recalled via Program Change, 1-based. None until
+        #: the first recall -- a real Qu offers no way to read this either.
+        self.current_scene: int | None = None
         self._decoder = NrpnDecoder()
         self._server: asyncio.AbstractServer | None = None
         self._client: asyncio.StreamWriter | None = None
@@ -145,6 +155,19 @@ class FakeQu:
             if msg.velocity == 0x00:
                 return
             self.mutes[msg.note] = msg.velocity >= 0x40
+            return
+        if isinstance(msg, ProgramChange):
+            # PRD 7.2: the bank select immediately before is plain CC on
+            # controllers 0/32, not NRPN, so it never reaches here -- only
+            # the Program Change itself models "which scene is now live".
+            self.current_scene = msg.program + 1
+            new_state = self.scenes.get(self.current_scene)
+            if new_state is not None:
+                self._scene = dict(new_state)
+                self.state = dict(new_state)
+            new_names = self.scene_names.get(self.current_scene)
+            if new_names is not None:
+                self.names = dict(new_names)
             return
         if not isinstance(msg, SysEx):
             return

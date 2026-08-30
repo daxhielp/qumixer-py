@@ -142,6 +142,14 @@ async def cmd_dump_state(args: argparse.Namespace) -> int:
     return 0
 
 
+async def cmd_recall(args: argparse.Namespace) -> int:
+    async with AsyncQuMixer(args.host, port=args.port) as mixer:
+        await mixer.wait_synced()
+        await mixer.recall_scene(args.scene, resync=not args.no_resync)
+        print(f"recalled scene {args.scene}")
+    return 0
+
+
 async def cmd_probe(args: argparse.Namespace) -> int:
     async with AsyncQuMixer(args.host, port=args.port) as mixer:
         await mixer.wait_synced()
@@ -226,6 +234,15 @@ def build_parser() -> argparse.ArgumentParser:
     dump.add_argument("--port", type=int, default=c.QU_TCP_PORT)
     dump.add_argument("--json", action="store_true")
     dump.set_defaults(func=cmd_dump_state)
+
+    rec = sub.add_parser(
+        "recall", parents=[common], help="recall a scene by its displayed number"
+    )
+    rec.add_argument("--host", required=True)
+    rec.add_argument("--port", type=int, default=c.QU_TCP_PORT)
+    rec.add_argument("scene", type=int, help="1-100, as shown on the console")
+    rec.add_argument("--no-resync", action="store_true")
+    rec.set_defaults(func=cmd_recall)
 
     return ap
 

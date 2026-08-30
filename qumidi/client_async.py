@@ -13,6 +13,7 @@ import time
 from collections import defaultdict, deque
 from collections.abc import Callable
 from types import TracebackType
+from typing import Any
 
 from qumidi.errors import (
     NotSyncedError,
@@ -83,6 +84,7 @@ class AsyncQuMixer:
         name_sweep_interval: float = c.NAME_SWEEP_INTERVAL,
         name_request_timeout: float = c.NAME_REQUEST_TIMEOUT,
         name_request_retries: int = c.NAME_REQUEST_RETRIES,
+        scene_settle_delay: float = c.SCENE_SETTLE_DELAY,
     ) -> None:
         self.host = host
         self.port = port
@@ -95,6 +97,7 @@ class AsyncQuMixer:
         self.name_sweep_interval = name_sweep_interval
         self.name_request_timeout = name_request_timeout
         self.name_request_retries = name_request_retries
+        self.scene_settle_delay = scene_settle_delay
         self.names: dict[ChannelId, str | None] = {}
         self._name_waiters: dict[int, asyncio.Future[str]] = {}
 
@@ -127,6 +130,16 @@ class AsyncQuMixer:
         #: flush-on-``14`` in ``_on_sysex`` (PRD 9.3.8).
         self._syncing = False
         self._transport.on_state_change(self.events.emit_connection_state)
+
+        # -- Slice 7: scene recall ------------------------------------------
+        #: 1-based, matching the console's own display. See the
+        #: ``last_recalled_scene`` property for why this is the only scene
+        #: state this client can ever know.
+        self._last_recalled_scene: int | None = None
+        #: Placeholder for a future custom-surface-layer feature (PRD 6.3):
+        #: no ``SurfaceMap`` type exists yet, so this stays unset and is only
+        #: ever consulted -- never assigned -- by ``recall_scene()``.
+        self._surface_map: Any = None
 
     # -- properties -------------------------------------------------------
 
@@ -167,6 +180,16 @@ class AsyncQuMixer:
     def state(self) -> ConnectionState:
         return self._transport.state
 
+    @property
+    def last_recalled_scene(self) -> int | None:
+        """The scene this client last recalled, 1-based.
+
+        There is no way to read the current scene number from the console, so
+        this reflects only what this client recalled. It is None after connect
+        and after any recall made from the console's own surface (PRD 7.2).
+        """
+        return self._last_recalled_scene
+
     # -- reads and subscriptions -------------------------------------------
 
     def get(self, ch: ChannelId, param: str, sub: int | None = None) -> CachedValue:
@@ -196,6 +219,9 @@ class AsyncQuMixer:
 
     def on_write_unconfirmed(self, cb: Callable[[ChannelId, str, int | None], None]) -> None:
         self.events.on_write_unconfirmed(cb)
+
+    def on_scene_recalled(self, cb: Callable[[int], None]) -> None:
+        self.events.on_scene_recalled(cb)
 
     async def refresh(self, ch: ChannelId | None = None, param: str | None = None) -> None:
         """Re-read state from the console.
@@ -536,6 +562,63 @@ class AsyncQuMixer:
         old, new = self.cache.set(ch, spec.name, sub, raw, Freshness.KNOWN)
         self.events.emit_change(ChangeEvent(ch, spec.name, sub, old, new, Source.LOCAL))
         self._expect_echo(ch, spec.name, sub, raw)
+
+    # -- scenes (PRD 7.2) ---------------------------------------------------
+
+    async def recall_scene(self, scene: int, *, resync: bool = True) -> None:
+        """Recall a scene, 1-based to match the console's display (PRD 7.2).
+
+        A scene changes hundreds of parameters at once and the console does not
+        promise to echo them, so this is a state-invalidating operation rather
+        than a fire-and-forget write: the cache goes STALE, SceneRecalled is
+        emitted, and after a settling delay the whole state is rebuilt.
+        """
+        n = self._require_synced(f"recall scene {scene}")
+        if not 1 <= scene <= 100:
+            raise ParameterRangeError(f"scene must be 1..100 (as displayed), got {scene}")
+        status = c.CONTROL_CHANGE | n
+        payload = bytes(
+            [
+                status, c.CC_BANK_SELECT_MSB, 0x00,
+                status, c.CC_BANK_SELECT_LSB, 0x00,
+                c.PROGRAM_CHANGE | n, scene - 1,
+            ]
+        )
+        # PRD 7.2: the Qu ignores program changes unless Bank 1 is currently
+        # selected, so the bank select must be sent immediately before every
+        # single recall -- never once up front and reused.
+        await self._send(payload)
+        self._last_recalled_scene = scene
+
+        # Everything we believe about the console is now suspect.
+        self.cache.mark_all_stale()
+        await self._clear_expectations()
+        for ch in list(self.names):
+            self.names[ch] = None
+        if self._surface_map is not None:
+            # PRD 6.3: the custom layer is scene data and may have changed
+            # without notification.
+            self._surface_map.invalidate()
+        self.events.emit_scene_recalled(scene)
+
+        if not resync:
+            log.warning(
+                "scene %d recalled with resync=False; the cache is STALE and will not "
+                "be rebuilt until you call resync()", scene,
+            )
+            return
+
+        # PRD 14.13: 500 ms is a heuristic, not a protocol guarantee. Program
+        # Change is unacknowledged and the console gives no "recall finished"
+        # message; a large scene may need longer.
+        await asyncio.sleep(self.scene_settle_delay)
+        # resync() -> _sync() already sweeps names internally whenever
+        # sync_names is on -- that call is unconditional on *every* _sync()
+        # run, not just the first connect (see _sync()'s own body, just
+        # before it sets _ready_event) -- so a second, explicit sweep_names()
+        # call here would silently re-run the entire paced sweep a second
+        # time on every recall. Rely on the one resync() already does.
+        await self.resync()
 
     # -- inbound ----------------------------------------------------------
 
