@@ -27,6 +27,14 @@ from qumidi.errors import (
 from qumidi.events import ChangeEvent, EventBus, Source
 from qumidi.midi.messages import MidiMessage, NoteOn, SysEx
 from qumidi.midi.nrpn import NrpnDecoder, RawParamUpdate, encode_nrpn
+from qumidi.model.channel import (
+    BaseStrip,
+    DcaMaster,
+    InputChannel,
+    MixMaster,
+    MuteGroupMaster,
+    SendSource,
+)
 from qumidi.protocol import constants as c
 from qumidi.protocol.channels import (
     GLOBAL,
@@ -34,8 +42,17 @@ from qumidi.protocol.channels import (
     PERMISSIVE_CAPS,
     ChannelClass,
     ChannelId,
+    Dca,
+    FxReturn,
+    FxSend,
+    Group,
+    Input,
+    Matrix,
+    Mix,
     Model,
     ModelCaps,
+    MuteGroup,
+    StereoInput,
     caps_for_box_id,
     channel_from_raw,
     check_channel,
@@ -146,6 +163,13 @@ class AsyncQuMixer:
         #: empty deque for a key that has never had a write.
         self._expectations: dict[CacheKey, deque[tuple[int, float]]] = defaultdict(deque)
         self._expectation_tasks: set[asyncio.Task[None]] = set()
+        # -- Slice 9: the object facade -------------------------------------
+        #: In-flight ramps, keyed the same way the state cache keys a value
+        #: (channel, param, sub). A ParamProxy is a fresh object on every
+        #: property access (e.g. mixer.input(6).fader), so a ramp cannot be
+        #: tracked on the proxy itself -- two accesses of "the same" logical
+        #: parameter must still find and cancel each other's in-flight ramp.
+        self._ramps: dict[CacheKey, asyncio.Task[None]] = {}
         #: True for the entire state-burst handshake, including the
         #: flush-on-``14`` in ``_on_sysex`` (PRD 9.3.8).
         self._syncing = False
@@ -231,6 +255,43 @@ class AsyncQuMixer:
         if not isinstance(spec.domain, FlaggedIndex):
             raise UnknownParameterError(f"{param} is not a set-valued parameter")
         return self.cache.membership(ch, param, spec.domain.count, spec.domain.on_flag)
+
+    # -- object facade (PRD 11.1) -------------------------------------------
+
+    def input(self, n: int) -> InputChannel:
+        return InputChannel(self, Input(n))
+
+    def stereo_input(self, n: int) -> InputChannel:
+        return InputChannel(self, StereoInput(n))
+
+    def mix(self, target: ChannelId) -> MixMaster:
+        return MixMaster(self, target)
+
+    @property
+    def lr(self) -> MixMaster:
+        return MixMaster(self, Mix.LR)
+
+    def group(self, n: int) -> MixMaster:
+        return MixMaster(self, Group(n))
+
+    def matrix(self, n: int) -> MixMaster:
+        return MixMaster(self, Matrix(n))
+
+    def dca(self, n: int) -> DcaMaster:
+        return DcaMaster(self, Dca(n))
+
+    def mute_group(self, n: int) -> MuteGroupMaster:
+        return MuteGroupMaster(self, MuteGroup(n))
+
+    def fx_send(self, n: int) -> BaseStrip:
+        return BaseStrip(self, FxSend(n))
+
+    def fx_return(self, n: int) -> SendSource:
+        return SendSource(self, FxReturn(n))
+
+    async def all_fade_out(self, duration: float = 3.0) -> None:
+        """Ramp the LR fader to -inf. Convenience; LR only (PRD 11.1)."""
+        await self.lr.fader.ramp_to_raw(0x00, duration)
 
     def on_change(
         self,
