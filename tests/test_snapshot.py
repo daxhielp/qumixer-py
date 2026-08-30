@@ -22,9 +22,35 @@ async def test_snapshot_is_json_serialisable_and_carries_identity(fake_qu_factor
     assert snap["names"]["37"] == "Kick"     # 0x25
 
 
-async def test_snapshot_includes_unknown_entries_with_their_freshness(fake_qu_factory) -> None:  # type: ignore[no-untyped-def]
-    # PRD 10.5: a snapshot that silently drops unknowns is indistinguishable
-    # from one taken before sync.
+async def test_snapshot_reports_a_currently_unnamed_channel_as_null_not_omitted(  # type: ignore[no-untyped-def]
+    fake_qu_factory,
+) -> None:
+    # PRD 9.4/10.5: recall_scene() resets every previously-swept name back to
+    # None until the post-recall sweep repopulates it. A snapshot taken in
+    # that window must still report the channel, with a null name, rather
+    # than silently drop the key -- otherwise "not yet re-swept" and
+    # "channel absent from this snapshot" become indistinguishable.
+    fake = await fake_qu_factory(scene=SCENE, names={0x25: "Kick"})
+    async with AsyncQuMixer("127.0.0.1", port=fake.port) as mixer:
+        await mixer.wait_synced()
+        assert mixer.names[Input(6)] == "Kick"  # 0x25, sanity check before the recall
+        await mixer.recall_scene(1, resync=False)
+        snap = mixer.snapshot()
+    assert "37" in snap["names"]  # 0x25
+    assert snap["names"]["37"] is None
+
+
+async def test_snapshot_includes_unconfirmed_and_known_entries_with_their_freshness(  # type: ignore[no-untyped-def]
+    fake_qu_factory,
+) -> None:
+    # PRD 10.5: an UNCONFIRMED write must not be silently dropped or reported
+    # as if it were KNOWN -- a snapshot that hid it would be indistinguishable
+    # from one where the console actually confirmed the write. Note this is
+    # not a test of UNKNOWN coverage: StateCache never materializes a row for
+    # a parameter that was simply never observed (see build_snapshot()'s own
+    # docstring), so a truly-unknown parameter is absent from snap["values"]
+    # rather than present with freshness "UNKNOWN" -- there is nothing to
+    # assert about that case here.
     fake = await fake_qu_factory(scene=SCENE, echo=False)
     async with AsyncQuMixer("127.0.0.1", port=fake.port, echo_window=0.05) as mixer:
         await mixer.wait_synced()

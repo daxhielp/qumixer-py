@@ -44,6 +44,23 @@ def build_snapshot(
     names: dict[ChannelId, str | None],
     now: float,
 ) -> dict[str, Any]:
+    """Build the plain-dict snapshot.
+
+    ``values`` carries every entry ``cache`` actually holds, UNCONFIRMED and
+    STALE included, each tagged with its own freshness -- never silently
+    upgraded or dropped (PRD 10.5). ``StateCache`` never materializes a row
+    for a parameter that has simply never been observed (its ``.get()``
+    returns the UNKNOWN sentinel only for the lookup, it never stores it), so
+    such a parameter is absent from ``values`` here too -- there is no cache
+    entry to iterate, so nothing here can synthesize a fake
+    ``"freshness": "UNKNOWN"`` row for it.
+
+    ``names`` carries every channel this client currently tracks a name for,
+    ``None`` included -- e.g. every nameable channel goes back to ``None``
+    on scene recall until the post-recall sweep re-populates it (PRD 9.4).
+    Filtering those out would make "not yet re-swept" indistinguishable from
+    "channel absent from this snapshot".
+    """
     values = []
     for (raw_ch, cls, param, sub), value in cache.items():
         values.append(
@@ -62,7 +79,7 @@ def build_snapshot(
         "box_id": box_id,
         "model": model,
         "firmware": None if firmware is None else list(firmware),
-        "names": {str(ch.value): name for ch, name in names.items() if name is not None},
+        "names": {str(ch.value): name for ch, name in names.items()},
         "values": sorted(
             values, key=lambda v: (v["channel_raw"], v["param"], v["sub_index"] or -1)
         ),

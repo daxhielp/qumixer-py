@@ -264,8 +264,14 @@ class AsyncQuMixer:
     def snapshot(self) -> dict[str, Any]:
         """A JSON-serialisable picture of everything the library knows.
 
-        UNKNOWN and UNCONFIRMED entries are included with their freshness,
-        never omitted (PRD 10.5).
+        UNCONFIRMED and STALE entries are included with their freshness,
+        never silently upgraded or omitted (PRD 10.5). A parameter this
+        client has never observed at all has no cache entry to begin with --
+        the underlying StateCache never materializes an UNKNOWN row, it only
+        returns the UNKNOWN sentinel from a lookup -- so such a parameter is
+        simply absent from ``values``, the same as it would be from any
+        cache-backed snapshot; it is never synthesized as a fake
+        ``"freshness": "UNKNOWN"`` entry.
         """
         return build_snapshot(
             box_id=self._box_id,
