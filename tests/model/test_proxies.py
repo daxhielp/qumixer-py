@@ -189,6 +189,84 @@ async def test_group_fader_round_trip(fake_qu_factory) -> None:  # type: ignore[
         assert mixer.group(1).fader.raw == 0x50
 
 
+async def test_stereo_input_wires_to_the_right_channel(fake_qu_factory) -> None:  # type: ignore[no-untyped-def]
+    fake = await fake_qu_factory(scene={})
+    async with AsyncQuMixer("127.0.0.1", port=fake.port) as mixer:
+        await mixer.wait_synced()
+        st = mixer.stereo_input(1)
+        assert st.id.label == "ST1"
+        await st.fader.set_raw(0x50)
+        assert st.fader.raw == 0x50
+        # And a plain input on the same index stays a separate channel.
+        assert mixer.input(1).fader.value.freshness is Freshness.UNKNOWN
+
+
+async def test_mix_accessor_takes_an_arbitrary_mix_target(fake_qu_factory) -> None:  # type: ignore[no-untyped-def]
+    fake = await fake_qu_factory(scene={})
+    async with AsyncQuMixer("127.0.0.1", port=fake.port) as mixer:
+        await mixer.wait_synced()
+        await mixer.mix(Mix.MIX3).fader.set_raw(0x40)
+        assert mixer.mix(Mix.MIX3).fader.raw == 0x40
+
+
+async def test_matrix_fader_round_trip(fake_qu_factory) -> None:  # type: ignore[no-untyped-def]
+    fake = await fake_qu_factory(scene={})
+    async with AsyncQuMixer("127.0.0.1", port=fake.port) as mixer:
+        await mixer.wait_synced()
+        await mixer.matrix(1).fader.set_raw(0x33)
+        assert mixer.matrix(1).fader.raw == 0x33
+
+
+async def test_dca_master_mutes(fake_qu_factory) -> None:  # type: ignore[no-untyped-def]
+    fake = await fake_qu_factory(scene={})
+    async with AsyncQuMixer("127.0.0.1", port=fake.port) as mixer:
+        await mixer.wait_synced()
+        await mixer.dca(1).mute(True)
+        await asyncio.sleep(0.05)
+        assert fake.mutes[0x10] is True
+
+
+async def test_mute_group_master_fire_is_identical_to_mute(fake_qu_factory) -> None:  # type: ignore[no-untyped-def]
+    # PRD 7.2: firing a mute group has no dedicated message -- it's the same
+    # Note On a plain mute() sends.
+    fake = await fake_qu_factory(scene={})
+    async with AsyncQuMixer("127.0.0.1", port=fake.port) as mixer:
+        await mixer.wait_synced()
+        fake.received.clear()
+        await mixer.mute_group(2).fire(True)
+        await asyncio.sleep(0.05)
+    assert bytes([0x90, 0x51, 0x7F, 0x90, 0x51, 0x00]) in bytes(fake.received)
+    assert fake.mutes[0x51] is True
+
+
+async def test_fx_send_accessor_mutes(fake_qu_factory) -> None:  # type: ignore[no-untyped-def]
+    fake = await fake_qu_factory(scene={})
+    async with AsyncQuMixer("127.0.0.1", port=fake.port) as mixer:
+        await mixer.wait_synced()
+        await mixer.fx_send(1).mute(True)
+        await asyncio.sleep(0.05)
+        assert fake.mutes[0x00] is True
+
+
+async def test_fx_return_is_a_send_source(fake_qu_factory) -> None:  # type: ignore[no-untyped-def]
+    fake = await fake_qu_factory(scene={})
+    async with AsyncQuMixer("127.0.0.1", port=fake.port) as mixer:
+        await mixer.wait_synced()
+        ret = mixer.fx_return(1)
+        await ret.dca_assign.add(2)
+        for n in (1, 3, 4):
+            await ret.dca_assign.set(n, False)
+        assert ret.dca_assign.groups == frozenset({2})
+
+
+async def test_all_fade_out_ramps_lr_fader_to_zero(fake_qu_factory) -> None:  # type: ignore[no-untyped-def]
+    fake = await fake_qu_factory(scene={(0x67, 0x17, 0x07): 0x50})  # LR fader
+    async with AsyncQuMixer("127.0.0.1", port=fake.port, max_send_rate=None) as mixer:
+        await mixer.wait_synced()
+        await mixer.all_fade_out(duration=0.05)
+        assert mixer.lr.fader.raw == 0x00
+
+
 async def test_the_facade_contains_no_protocol_constants() -> None:
     # The critical invariant from PRD 3: layer 5 is a thin proxy over layer 4.
     import pathlib
