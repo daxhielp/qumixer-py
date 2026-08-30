@@ -155,6 +155,11 @@ class AsyncQuMixer:
         self._firmware: tuple[int, int] | None = None
         self._midi_channel: int | None = None
         self._caps: ModelCaps | None = None
+        #: The loop connect() ran on, recorded so the sync facade's blocking
+        #: property setters (qumidi/model/base.py) know which loop to marshal
+        #: onto, and so they can detect "called from that loop's own thread"
+        #: -- see ParamProxy._blocking (PRD 11.2).
+        self._owner_loop: asyncio.AbstractEventLoop | None = None
 
         # -- Slice 4: cache, events, ingest ---------------------------------
         self.cache = StateCache()
@@ -432,6 +437,7 @@ class AsyncQuMixer:
     # -- lifecycle --------------------------------------------------------
 
     async def connect(self) -> None:
+        self._owner_loop = asyncio.get_running_loop()
         await self._transport.connect()
         self._reader_task = asyncio.create_task(self._read_loop(), name="qumidi-client-read")
         self._tick_task = asyncio.create_task(self._tick_loop(), name="qumidi-client-tick")
@@ -475,6 +481,12 @@ class AsyncQuMixer:
         self._decoder.reset()
         await self._outbound.stop()
         await self._transport.close()
+        # Forget the loop once it's no longer safe to marshal onto: a stray
+        # property-setter write after close() should fail fast (the sync
+        # facade's "assignment is the synchronous API's sugar" RuntimeError,
+        # via _owner_loop being None) rather than block forever waiting on a
+        # loop that will never run its callback again (PRD 11.2).
+        self._owner_loop = None
 
     async def __aenter__(self) -> AsyncQuMixer:  # noqa: PYI034 -- typing.Self needs py311+
         await self.connect()

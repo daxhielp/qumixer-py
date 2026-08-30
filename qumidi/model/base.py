@@ -9,7 +9,8 @@ missing an entry -- add it there instead.
 from __future__ import annotations
 
 import asyncio
-from typing import TYPE_CHECKING
+from collections.abc import Coroutine
+from typing import TYPE_CHECKING, Any
 
 from qumidi.errors import ValueUnknownError
 from qumidi.protocol.channels import ChannelId
@@ -19,6 +20,23 @@ from qumidi.state import CachedValue, CacheKey, Freshness, MembershipSet, StateC
 
 if TYPE_CHECKING:  # pragma: no cover
     from qumidi.client_async import AsyncQuMixer
+
+
+def _in_loop_thread(loop: asyncio.AbstractEventLoop) -> bool:
+    """True if the *current* thread is the one presently running ``loop``.
+
+    ``asyncio.get_running_loop()`` is thread-local and only returns a loop
+    that is actually executing on the calling thread right now -- for the
+    entire duration of its ``run_forever()``, not just inside a coroutine
+    step -- so comparing it to ``loop`` is a direct, race-free way to answer
+    "am I on the event loop's own thread". No separate thread-id bookkeeping
+    is needed.
+    """
+    try:
+        running = asyncio.get_running_loop()
+    except RuntimeError:
+        return False
+    return running is loop
 
 
 class ParamProxy:
@@ -71,6 +89,15 @@ class ParamProxy:
             )
         return value.raw
 
+    @raw.setter
+    def raw(self, value: int) -> None:
+        """Blocking sugar for set_raw(). Only valid from the sync facade.
+
+        The setter blocks until the write is flushed -- the same guarantee as
+        await in the async API -- and raises the same exceptions (PRD 11.2).
+        """
+        self._blocking(self.set_raw(value), value)
+
     @property
     def db(self) -> float:
         """The value in engineering units. Approximate; .raw is the truth."""
@@ -81,6 +108,15 @@ class ParamProxy:
             )
         return spec.domain.to_db(self.raw)
 
+    @db.setter
+    def db(self, value: float) -> None:
+        """Blocking sugar for set_db(). Only valid from the sync facade.
+
+        The setter blocks until the write is flushed -- the same guarantee as
+        await in the async API -- and raises the same exceptions (PRD 11.2).
+        """
+        self._blocking(self.set_db(value), value)
+
     @property
     def is_approximate(self) -> bool:
         """True where .db was extrapolated beyond the documented anchors."""
@@ -88,6 +124,34 @@ class ParamProxy:
         if not isinstance(spec.domain, Interpolated):
             return False
         return spec.domain.taper.is_approximate(self.raw) or not spec.domain.taper.verified
+
+    def _blocking(self, coro: Coroutine[Any, Any, None], value: float) -> None:
+        """Run ``coro`` to completion, blocking the *calling* thread.
+
+        This is what makes ``proxy.db = -6.0`` behave like ``await
+        proxy.set_db(-6.0)`` from the sync facade (PRD 11.2): the mixer
+        records the loop it connected on as ``_owner_loop``, and this
+        marshals ``coro`` onto that loop with ``run_coroutine_threadsafe``
+        and blocks until it's done -- the write is on the wire (or the
+        exception has been raised) before the assignment returns.
+
+        Refuses -- rather than deadlocking -- in the two cases where that
+        cannot work: no owner loop is known yet (never connected, or already
+        closed), or this is itself running on the owner loop's own thread (an
+        `await`-based caller assigning to the property instead of using
+        `set_db`/`set_raw`; blocking here would freeze the very loop the
+        write needs to run on).
+        """
+        loop = getattr(self._mixer, "_owner_loop", None)
+        if loop is None or (loop.is_running() and _in_loop_thread(loop)):
+            coro.close()
+            raise RuntimeError(
+                f"{self._channel.label} {self._param}: cannot assign {value!r} -- "
+                f"assignment is the synchronous API's sugar; from async code use "
+                f"`await proxy.set_db(...)` / `await proxy.set_raw(...)` instead. (This "
+                f"also fires if the mixer isn't connected yet, or has been closed.)"
+            )
+        asyncio.run_coroutine_threadsafe(coro, loop).result()
 
     # -- writes -----------------------------------------------------------
 
