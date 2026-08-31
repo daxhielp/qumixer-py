@@ -107,6 +107,21 @@ def test_asking_for_a_meter_the_block_does_not_have_is_an_error() -> None:
         layout.offset_of(MeterSlot.mix(Mix.MIX1, Meter.POST_PREAMP))
 
 
+def test_a_non_positive_index_is_an_error_not_a_wrapped_offset() -> None:
+    # PRD 12.1: every MeterSlot factory is 1-based. Without a floor check,
+    # offset_of(index=0) computes a negative offset (within = 0 - 0 - 1 =
+    # -1) that Python's slicing later reinterprets as "count from the end
+    # of the buffer" instead of raising -- silently returning the wrong
+    # meter's value rather than failing loudly.
+    layout = LAYOUTS["qu32"]
+    with pytest.raises(MeterLayoutError):
+        layout.offset_of(MeterSlot.input(0, Meter.POST_PREAMP))
+    with pytest.raises(MeterLayoutError):
+        layout.offset_of(MeterSlot.input(-1, Meter.POST_PREAMP))
+    with pytest.raises(MeterLayoutError):
+        layout.offset_of(MeterSlot.fx(0, Meter.SEND_L))
+
+
 def test_frames_decode_lazily_and_correctly() -> None:
     layout = LAYOUTS["qu32"]
     payload = bytearray(layout.payload_bytes)

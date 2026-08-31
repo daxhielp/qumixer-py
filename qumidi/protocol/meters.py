@@ -205,6 +205,10 @@ class MeterLayout:
 
     def offset_of(self, slot: MeterSlot) -> int:
         """The 0-based meter index of ``slot`` within a frame."""
+        if slot.index < 1:
+            raise MeterLayoutError(
+                f"{slot.kind.name} channel index must be >= 1, got {slot.index}"
+            )
         offset = 0
         seen = 0
         for block in self.blocks:
