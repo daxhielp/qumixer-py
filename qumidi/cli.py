@@ -149,27 +149,49 @@ async def cmd_record(args: argparse.Namespace) -> int:
     meter layout.
     """
     import contextlib
+    import logging
     from pathlib import Path
 
     from qumidi.midi.messages import SystemRealtime
     from qumidi.transport.tcp import TcpTransport
 
+    log = logging.getLogger(__name__)
+    wire = logging.getLogger("qumidi.wire")
     captured = bytearray()
 
     class RecordingTransport(TcpTransport):
         async def _read_loop(self) -> None:
+            # Mirrors TcpTransport._read_loop exactly (error handling and the
+            # unconditional _on_link_down() call included) with one line
+            # added: every inbound chunk is also appended to `captured`. A
+            # bare loop body here -- without the base class's try/except and
+            # _on_link_down() -- would let a real disconnect's OSError
+            # propagate unhandled out of the task (silently swallowed by
+            # _open()'s asyncio.gather(..., return_exceptions=True)) and skip
+            # the DISCONNECTED transition entirely, which matters most for
+            # this command since recording is run against real hardware.
             assert self._reader is not None
-            while True:
-                data = await self._reader.read(4096)
-                if not data:
-                    break
-                captured.extend(data)
-                self._last_inbound = asyncio.get_running_loop().time()
-                for msg in self._parser.feed(data):
-                    if isinstance(msg, SystemRealtime) and not self.forward_active_sense:
-                        continue
-                    with contextlib.suppress(asyncio.QueueFull):
-                        self._inbox.put_nowait(msg)
+            try:
+                while True:
+                    data = await self._reader.read(4096)
+                    if not data:
+                        break
+                    captured.extend(data)
+                    self._last_inbound = asyncio.get_running_loop().time()
+                    if wire.isEnabledFor(logging.DEBUG):
+                        wire.debug("RX %s", data.hex(" "))
+                    for msg in self._parser.feed(data):
+                        if isinstance(msg, SystemRealtime) and not self.forward_active_sense:
+                            continue
+                        with contextlib.suppress(asyncio.QueueFull):
+                            self._inbox.put_nowait(msg)
+            except asyncio.CancelledError:
+                raise
+            except (OSError, asyncio.IncompleteReadError) as exc:
+                log.info("read loop ended: %s", exc)
+            except Exception:
+                log.exception("read loop ended unexpectedly")
+            self._on_link_down()
 
     transport = RecordingTransport(args.host, args.port)
     mixer = AsyncQuMixer(args.host, port=args.port, transport=transport)

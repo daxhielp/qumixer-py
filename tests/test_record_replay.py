@@ -29,6 +29,44 @@ async def test_record_captures_inbound_bytes(fake_qu_factory, tmp_path) -> None:
     assert bytes([0xB0, 0x63, 0x25]) in data     # the state burst
 
 
+async def test_record_frames_stops_after_n_meter_frames(fake_qu_factory, tmp_path) -> None:  # type: ignore[no-untyped-def]
+    # PRD 13.5: --frames lets a user capture exactly the meter frames needed
+    # to derive a corrected layout, rather than guessing at --seconds.
+    from qumidi.protocol import constants as c
+    from qumidi.protocol.meters import LAYOUTS, Meter, MeterSlot
+
+    def frame_for(model: str, slot: MeterSlot, raw_u16: int) -> bytes:
+        layout = LAYOUTS[model]
+        payload = bytearray(layout.payload_bytes)
+        offset = layout.offset_of(slot) * 2
+        payload[offset : offset + 2] = raw_u16.to_bytes(2, "big")
+        return bytes(payload)
+
+    slot = MeterSlot.input(6, Meter.POST_PREAMP)
+    frames = [frame_for("qu32", slot, 0x1000 + i) for i in range(5)]
+    fake = await fake_qu_factory(model="qu32", meter_frames=frames, meter_rate=100.0)
+    out = tmp_path / "capture.bin"
+
+    loop = asyncio.get_running_loop()
+    start = loop.time()
+    rc = await loop.run_in_executor(
+        None, main,
+        ["record", "--host", "127.0.0.1", "--port", str(fake.port),
+         "--out", str(out), "--frames", "3"],
+    )
+    elapsed = loop.time() - start
+
+    assert rc == 0
+    # --frames stops as soon as 3 meter frames have been decoded, well before
+    # record's own default --seconds=5.0 sleep would elapse -- proving the
+    # --frames branch, not the --seconds one, is what actually ran.
+    assert elapsed < 4.0
+
+    data = out.read_bytes()
+    marker = c.QU_SYSEX_PREFIX + bytes([0, c.CMD_METER_DATA])
+    assert data.count(marker) >= 3
+
+
 async def test_replay_feeds_a_capture_through_fake_qu(fake_qu_factory, tmp_path) -> None:  # type: ignore[no-untyped-def]
     # PRD 13.1: replay mode lets CI regress against real traffic shapes.
     from qumidi.midi.nrpn import encode_nrpn
