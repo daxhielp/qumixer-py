@@ -11,8 +11,10 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
+import os
 from collections.abc import Iterable
 from itertools import cycle
+from pathlib import Path
 
 from qumidi.midi.messages import MidiMessage, NoteOn, ProgramChange, SysEx
 from qumidi.midi.nrpn import NrpnDecoder, encode_nrpn
@@ -50,6 +52,7 @@ class FakeQu:
         drop_after_sync: bool = False,
         meter_frames: Iterable[bytes] | None = None,
         meter_rate: float = 20.0,
+        replay: str | os.PathLike[str] | None = None,
     ) -> None:
         self.model = model
         self.midi_channel = midi_channel
@@ -71,6 +74,10 @@ class FakeQu:
         self.meters_enabled = False
         self._meter_frames = list(meter_frames or [])
         self.meter_rate = meter_rate
+        #: PRD 13.1/13.5: when set, `_handle` serves this raw capture verbatim
+        #: instead of running the synthesised state machine below -- a real
+        #: session recorded once and replayed forever as a regression fixture.
+        self._replay: bytes | None = Path(replay).read_bytes() if replay is not None else None
 
         self.port = 0
         self.connections = 0
@@ -126,11 +133,22 @@ class FakeQu:
         try:
             writer.write(bytes([c.ACTIVE_SENSING]))
             await writer.drain()
-            parser = MidiStreamParser()
-            while data := await reader.read(4096):
-                self.received.extend(data)
-                for msg in parser.feed(data):
-                    await self._on_message(msg, writer)
+            if self._replay is not None:
+                # Give the client a moment to open its socket and send its
+                # own opening request before the capture starts arriving --
+                # the capture already contains whatever reply that request
+                # would have produced, so nothing needs to be parsed here.
+                await asyncio.sleep(0.05)
+                writer.write(self._replay)
+                await writer.drain()
+                while await reader.read(4096):
+                    pass
+            else:
+                parser = MidiStreamParser()
+                while data := await reader.read(4096):
+                    self.received.extend(data)
+                    for msg in parser.feed(data):
+                        await self._on_message(msg, writer)
         except (ConnectionResetError, asyncio.CancelledError, OSError):
             pass
         finally:

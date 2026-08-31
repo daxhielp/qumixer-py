@@ -140,6 +140,70 @@ async def cmd_recall(args: argparse.Namespace) -> int:
     return 0
 
 
+async def cmd_record(args: argparse.Namespace) -> int:
+    """PRD 13.1, 13.5: capture the raw inbound byte stream to a file.
+
+    The capture is everything a real session says on the wire -- state sync,
+    surface moves, meters if requested -- byte for byte, so it can later be
+    replayed through FakeQu as a regression fixture or to derive a corrected
+    meter layout.
+    """
+    import contextlib
+    from pathlib import Path
+
+    from qumidi.midi.messages import SystemRealtime
+    from qumidi.transport.tcp import TcpTransport
+
+    captured = bytearray()
+
+    class RecordingTransport(TcpTransport):
+        async def _read_loop(self) -> None:
+            assert self._reader is not None
+            while True:
+                data = await self._reader.read(4096)
+                if not data:
+                    break
+                captured.extend(data)
+                self._last_inbound = asyncio.get_running_loop().time()
+                for msg in self._parser.feed(data):
+                    if isinstance(msg, SystemRealtime) and not self.forward_active_sense:
+                        continue
+                    with contextlib.suppress(asyncio.QueueFull):
+                        self._inbox.put_nowait(msg)
+
+    transport = RecordingTransport(args.host, args.port)
+    mixer = AsyncQuMixer(args.host, port=args.port, transport=transport)
+    async with mixer:
+        await mixer.wait_synced()
+        if args.frames:
+            async with mixer.meters.enabled():
+                count = 0
+                async for _frame in mixer.meters.stream():
+                    count += 1
+                    if count >= args.frames:
+                        break
+        elif args.meters:
+            await mixer.meters.enable()
+            await asyncio.sleep(args.seconds)
+            await mixer.meters.disable()
+        else:
+            await asyncio.sleep(args.seconds)
+    Path(args.out).write_bytes(bytes(captured))
+    print(f"wrote {len(captured)} bytes to {args.out}")
+    return 0
+
+
+async def cmd_replay(args: argparse.Namespace) -> int:
+    """PRD 13.1: serve a recorded capture through FakeQu."""
+    from qumidi.testing.fake_qu import FakeQu
+
+    fake = FakeQu(replay=args.capture)
+    await fake.start(args.bind, args.port)
+    print(f"replaying {args.capture} on {args.bind}:{fake.port}; Ctrl-C to stop")
+    await asyncio.Event().wait()
+    return 0
+
+
 async def cmd_probe(args: argparse.Namespace) -> int:
     async with AsyncQuMixer(args.host, port=args.port) as mixer:
         await mixer.wait_synced()
@@ -238,6 +302,25 @@ def build_parser() -> argparse.ArgumentParser:
     rec.add_argument("scene", type=int, help="1-100, as shown on the console")
     rec.add_argument("--no-resync", action="store_true")
     rec.set_defaults(func=cmd_recall)
+
+    recp = sub.add_parser(
+        "record", parents=[common], help="capture the inbound MIDI stream to a file"
+    )
+    recp.add_argument("--host", required=True)
+    recp.add_argument("--port", type=int, default=c.QU_TCP_PORT)
+    recp.add_argument("--out", required=True)
+    recp.add_argument("--seconds", type=float, default=5.0)
+    recp.add_argument("--meters", action="store_true", help="enable metering while recording")
+    recp.add_argument(
+        "--frames", type=int, help="stop after this many meter frames instead of --seconds"
+    )
+    recp.set_defaults(func=cmd_record)
+
+    rep = sub.add_parser("replay", parents=[common], help="serve a capture through FakeQu")
+    rep.add_argument("capture")
+    rep.add_argument("--port", type=int, default=c.QU_TCP_PORT)
+    rep.add_argument("--bind", default="127.0.0.1")
+    rep.set_defaults(func=cmd_replay)
 
     return ap
 
