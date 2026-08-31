@@ -226,6 +226,18 @@ class FakeQu:
             self._client.close()
             self._client = None
 
+    async def send_raw(self, data: bytes) -> None:
+        """Write raw bytes straight to the client, unparsed.
+
+        For traffic this fake's own message model has no representation for
+        yet (e.g. MIDI-strip channel N+1 CCs, PRD 6.3/14.7) -- everything
+        else should prefer send_surface_move() or the sysex helpers.
+        """
+        if self._client is None:
+            raise RuntimeError("no client connected")
+        self._client.write(data)
+        await self._client.drain()
+
     async def send_surface_move(self, ch: int, param_id: int, value: int, vx: int) -> None:
         """Emit an unsolicited NRPN, as a physical control move would."""
         if self._client is None:

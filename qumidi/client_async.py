@@ -63,6 +63,7 @@ from qumidi.protocol.channels import (
 )
 from qumidi.protocol.params import Direction, FlaggedIndex, Interpolated, ParamSpec, SendTarget
 from qumidi.protocol.registry import REGISTRY, send_target_vx
+from qumidi.protocol.strips import StripApi
 from qumidi.protocol.sysex import (
     QuSysex,
     get_name,
@@ -157,6 +158,12 @@ class AsyncQuMixer:
         self._firmware: tuple[int, int] | None = None
         self._midi_channel: int | None = None
         self._caps: ModelCaps | None = None
+        # -- Slice 11: raw MIDI-strip sub-API (PRD 6.3, 14.7, 14.11) --------
+        #: None until sync learns N, and stays None forever if N == 15 (the
+        #: console is on MIDI channel 16), since there is no channel N+1 to
+        #: address in that case -- see _on_state_reply().
+        self.strips: StripApi | None = None
+        self.strips_available: bool = False
         #: The loop connect() ran on, recorded so the sync facade's blocking
         #: property setters (qumidi/model/base.py) know which loop to marshal
         #: onto, and so they can detect "called from that loop's own thread"
@@ -430,6 +437,8 @@ class AsyncQuMixer:
         self._firmware = None
         self._midi_channel = None
         self._caps = None
+        self.strips = None
+        self.strips_available = False
         # _sync() already sweeps names (when sync_names is on), sets
         # _ready_event and emits SyncComplete internally on every call it
         # makes -- see its own body. Do not repeat any of that here: it is
@@ -891,6 +900,29 @@ class AsyncQuMixer:
                 log.exception("error handling inbound message %r", msg)
 
     def _dispatch(self, msg: MidiMessage) -> None:
+        # PRD 6.3, 14.7: MIDI-strip traffic lives on channel N+1, a namespace
+        # entirely separate from channel N -- moving a strip emits no channel
+        # NRPN at all. Route it straight to strip subscribers and return
+        # *before* it ever reaches the NRPN decoder below, rather than after
+        # (as _ingest's own channel guard alone would allow): the decoder's
+        # per-parameter accumulator is keyed per channel, so it would not
+        # cross-contaminate channel N's (ch, param_id) either way, but its
+        # single held-update slot is NOT per-channel (NrpnDecoder._held) --
+        # any interleaved CC on any other channel force-flushes it early,
+        # without a VX. Diverting strip channel traffic here means it can
+        # never trigger that early flush for channel N's own in-flight NRPN
+        # assembly, on top of never touching the cache (still enforced by
+        # _ingest's own midi_channel guard, for any strip update that somehow
+        # still reaches it).
+        channel = getattr(msg, "channel", None)
+        if (
+            channel is not None
+            and self._midi_channel is not None
+            and channel == self._midi_channel + 1
+        ):
+            if self.strips is not None:
+                self.strips._dispatch(msg)
+            return
         # Every message is fed to the NRPN decoder, sysex included: a non-CC
         # message is itself flush trigger (b) in NrpnDecoder.feed(), which is
         # how the end-of-sync marker below flushes a held update *before*
@@ -1101,6 +1133,22 @@ class AsyncQuMixer:
         self._firmware = firmware
         self._midi_channel = parsed.midi_channel
         self._caps = caps_for_box_id(box_id)
+        if parsed.midi_channel == 15:
+            # PRD 14.11: N+1 does not exist when the console is on MIDI
+            # channel 16 (wire value 15). Never emit a status byte of
+            # B0|16 -- 4 bits cannot hold 16, and it would corrupt into a
+            # system-message status byte -- so the strip sub-API is simply
+            # unavailable in this configuration.
+            self.strips = None
+            self.strips_available = False
+            log.warning(
+                "the console is on MIDI channel 16, so the MIDI-strip layer's channel "
+                "N+1 does not exist; the strip sub-API is disabled. Move the console to "
+                "channel 1-15 to use it."
+            )
+        else:
+            self.strips = StripApi(self, parsed.midi_channel + 1)
+            self.strips_available = True
         if firmware < c.MIN_FIRMWARE:
             # PRD 6.2: do not raise, and do not silently pretend the registry applies.
             log.warning(
