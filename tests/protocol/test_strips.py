@@ -4,6 +4,7 @@ import pytest
 
 from qumidi.client_async import AsyncQuMixer
 from qumidi.errors import ParameterRangeError
+from qumidi.midi.nrpn import encode_nrpn
 from qumidi.protocol.channels import Input
 from qumidi.protocol.strips import Strip, StripId, StripKey
 
@@ -93,3 +94,49 @@ async def test_strip_traffic_is_not_ingested_as_channel_state(fake_qu_factory) -
         await asyncio.sleep(0.1)
         assert len(seen) == 1
         assert mixer.get(Input(1), "fader").raw is None
+
+
+async def test_interleaved_strip_traffic_does_not_corrupt_a_held_nrpn(
+    fake_qu_factory,  # type: ignore[no-untyped-def]
+) -> None:
+    # Regression for the _dispatch ordering fix (task-11.1): NrpnDecoder._held
+    # (qumidi/midi/nrpn.py) is a single instance attribute, not keyed by
+    # channel. Every branch of feed() other than the Data-LSB match starts by
+    # releasing whatever is currently held, with no VX, i.e. incomplete. If
+    # strip traffic (channel N+1) is ever fed into the decoder while a
+    # channel-N Data MSB is held awaiting its Data LSB, that CC forces a
+    # premature, VX-less flush -- corrupting the in-flight channel-N NRPN
+    # assembly. The fix routes N+1 traffic to StripApi._dispatch and returns
+    # *before* decoder.feed() ever runs for it, so it can never disturb
+    # _held. This test fails under the brief's original ordering (route to
+    # strips only after feed() has already run for every message) and
+    # passes under the current one.
+    fake = await fake_qu_factory(midi_channel=0, scene={})
+    seen: list[object] = []
+    async with AsyncQuMixer("127.0.0.1", port=fake.port) as mixer:
+        await mixer.wait_synced()
+        mixer.strips.on_strip_event(seen.append)
+
+        # Input 1 (ch=0x20) send_level (id=0x20) to Mix 3 (vx=0x02) = 0x50 --
+        # the same wire values test_state_sync.py's SCENE uses for Input 6,
+        # chosen (over "fader", whose VX is a fixed filler the cache ignores)
+        # because send_level's VX addresses a distinct cache sub-index: a
+        # premature, VX-less flush lands in the wrong slot (sub=None) rather
+        # than merely losing a filler byte, so this actually discriminates
+        # the two dispatch orderings via mixer.get()'s final state.
+        # The two sends below are deliberately much shorter than
+        # c.PENDING_FLUSH_TIMEOUT (50ms): they only need to give the read
+        # loop a chance to process each write before the next one, not
+        # invite the *unrelated* tick-driven flush trigger (silence timeout)
+        # to release the held update for reasons that have nothing to do
+        # with the ordering bug this test targets.
+        quad = encode_nrpn(midi_channel=0, ch=0x20, param_id=0x20, value=0x50, vx=0x02)
+        await fake.send_raw(quad[:9])  # NRPN MSB, NRPN LSB, Data MSB -- now held.
+        await asyncio.sleep(0.01)
+        await fake.send_raw(bytes([0xB1, 0x04, 0x40]))  # strip CC on channel N+1
+        await asyncio.sleep(0.01)
+        await fake.send_raw(quad[9:])  # the real Data LSB, completing the quad.
+        await asyncio.sleep(0.05)
+
+        assert len(seen) == 1
+        assert mixer.get(Input(1), "send_level", 0x02).raw == 0x50
