@@ -27,7 +27,7 @@ def test_a_map_starts_valid_and_can_be_invalidated() -> None:
     assert custom.valid is True
     custom.invalidate()
     assert custom.valid is False
-    with pytest.raises(RuntimeError) as excinfo:
+    with pytest.raises(RuntimeError) as excinfo:  # type: ignore
         custom.channel_at(1)
     assert "scene" in str(excinfo.value).lower()
 
