@@ -128,6 +128,7 @@ class AsyncQuMixer:
         max_reconnect_attempts: int | None = None,
         meter_queue_size: int = c.METER_QUEUE_SIZE,
         allow_shutdown: bool = False,
+        partial_sync_ok: bool = False,
     ) -> None:
         self.host = host
         self.port = port
@@ -142,6 +143,10 @@ class AsyncQuMixer:
         self.name_request_retries = name_request_retries
         self.scene_settle_delay = scene_settle_delay
         self.allow_shutdown = allow_shutdown
+        #: PRD 9.3.9: on a missing end-of-sync marker, keep whatever arrived
+        #: (marked KNOWN) and proceed to READY with a warning, instead of
+        #: raising SyncTimeoutError.
+        self.partial_sync_ok = partial_sync_ok
         self.names: dict[ChannelId, str | None] = {}
         self._name_waiters: dict[int, asyncio.Future[str]] = {}
 
@@ -585,10 +590,22 @@ class AsyncQuMixer:
             try:
                 await asyncio.wait_for(self._sync_event.wait(), timeout=self.sync_timeout)
             except asyncio.TimeoutError as exc:
-                raise SyncTimeoutError(
-                    f"{self.host}:{self.port} replied to the state request but sent no "
-                    f"end-of-sync marker within {self.sync_timeout}s; the state push failed"
-                ) from exc
+                if self.partial_sync_ok:
+                    # PRD 9.3.9: keep whatever arrived (already cached as
+                    # KNOWN by _ingest above) and proceed to READY with a
+                    # warning, rather than raising and discarding it.
+                    log.warning(
+                        "%s:%s sent no end-of-sync marker within %.1fs; proceeding with "
+                        "whatever state arrived (partial_sync_ok=True)",
+                        self.host, self.port, self.sync_timeout,
+                    )
+                    for update in self._decoder.flush():
+                        self._ingest(update)
+                else:
+                    raise SyncTimeoutError(
+                        f"{self.host}:{self.port} replied to the state request but sent no "
+                        f"end-of-sync marker within {self.sync_timeout}s; the state push failed"
+                    ) from exc
         finally:
             self._syncing = False
         self._transport.set_state(ConnectionState.READY)

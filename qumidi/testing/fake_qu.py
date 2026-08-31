@@ -50,9 +50,17 @@ class FakeQu:
         scenes: dict[int, dict[tuple[int, int, int], int]] | None = None,
         scene_names: dict[int, dict[int, str]] | None = None,
         drop_after_sync: bool = False,
+        reconnect_after_drops: int | None = None,
         meter_frames: Iterable[bytes] | None = None,
         meter_rate: float = 20.0,
         replay: str | os.PathLike[str] | None = None,
+        split_writes: int | None = None,
+        fe_inside_sysex: bool = False,
+        fe_between_every_byte: bool = False,
+        malformed_sysex: bool = False,
+        duplicate_state_reply: bool = False,
+        name_bytes_high: bool = False,
+        running_status: bool = False,
     ) -> None:
         self.model = model
         self.midi_channel = midi_channel
@@ -66,6 +74,21 @@ class FakeQu:
         #: PRD 13.1: drop the connection immediately after the `14` end-of-
         #: sync marker, so the "drop mid-sync" fault is exercisable.
         self.drop_after_sync = drop_after_sync
+        #: Cap on how many syncs drop_after_sync actually drops -- None means
+        #: unbounded. Lets a test exercise "drop, then reconnect and settle"
+        #: rather than looping forever, since every resync after a drop would
+        #: otherwise drop again too.
+        self.reconnect_after_drops = reconnect_after_drops
+        self._drops_done = 0
+        #: PRD 13.1 fault-injection flags -- see _write() for how the first
+        #: three compose, and _do_sync()/_on_message() for the rest.
+        self.split_writes = split_writes
+        self.fe_inside_sysex = fe_inside_sysex
+        self.fe_between_every_byte = fe_between_every_byte
+        self.malformed_sysex = malformed_sysex
+        self.duplicate_state_reply = duplicate_state_reply
+        self.name_bytes_high = name_bytes_high
+        self.running_status = running_status
         self.names: dict[int, str] = dict(names or {})
         self.name_requests: list[int] = []
         self.name_silent: set[int] = set(name_silent or ())
@@ -131,8 +154,7 @@ class FakeQu:
         keepalive = asyncio.create_task(self._keepalive(writer))
         self._tasks.add(keepalive)
         try:
-            writer.write(bytes([c.ACTIVE_SENSING]))
-            await writer.drain()
+            await self._write(writer, bytes([c.ACTIVE_SENSING]))
             if self._replay is not None:
                 # Give the client a moment to open its socket and send its
                 # own opening request before the capture starts arriving --
@@ -173,10 +195,39 @@ class FakeQu:
         try:
             while True:
                 await asyncio.sleep(self.keepalive_interval)
-                writer.write(bytes([c.ACTIVE_SENSING]))
-                await writer.drain()
+                await self._write(writer, bytes([c.ACTIVE_SENSING]))
         except (asyncio.CancelledError, OSError):
             pass
+
+    async def _write(self, writer: asyncio.StreamWriter, data: bytes) -> None:
+        """Every synthesised outbound byte passes through here (PRD 13.1).
+
+        Applying the fault flags at one chokepoint, rather than at each call
+        site, is what makes them compose -- e.g. fe_between_every_byte and
+        split_writes both apply to the same already-mangled bytes below.
+        send_raw()/send_surface_move() and replay mode bypass this
+        deliberately: they hand bytes straight to the wire unparsed, or
+        replay a real capture verbatim, so there is nothing here for the
+        fault flags to apply to.
+        """
+        if self.fe_inside_sysex and data[:1] == bytes([c.SYSEX_START]):
+            # PRD 13.1: active sensing landing mid-sysex. Rule 3 of the
+            # client's own parser extracts a realtime byte from anywhere,
+            # including here, without disturbing the sysex in progress --
+            # this is exactly the case that a naive "assume no other bytes
+            # interrupt a sysex" parser gets wrong.
+            mid = len(data) // 2
+            data = data[:mid] + bytes([c.ACTIVE_SENSING]) + data[mid:]
+        if self.fe_between_every_byte:
+            data = b"".join(bytes([byte, c.ACTIVE_SENSING]) for byte in data)
+        if self.split_writes:
+            for start in range(0, len(data), self.split_writes):
+                writer.write(data[start : start + self.split_writes])
+                await writer.drain()
+                await asyncio.sleep(0)
+            return
+        writer.write(data)
+        await writer.drain()
 
     async def _on_message(self, msg: MidiMessage, writer: asyncio.StreamWriter) -> None:
         for update in self._decoder.feed(msg):
@@ -184,12 +235,12 @@ class FakeQu:
                 continue
             self.state[(update.ch, update.param_id, update.vx)] = update.value
             if self.echo:
-                writer.write(
+                await self._write(
+                    writer,
                     encode_nrpn(
                         self.midi_channel, update.ch, update.param_id, update.value, update.vx
-                    )
+                    ),
                 )
-                await writer.drain()
         if isinstance(msg, NoteOn):
             # PRD 7.2 receive rule: velocity 00 and Note Off are ignored;
             # 01-3F unmutes, 40-7F mutes.
@@ -229,12 +280,23 @@ class FakeQu:
             if ch in self.name_silent:
                 return
             name = self.names.get(ch, "")
-            writer.write(
-                build_sysex(
-                    self.midi_channel, bytes([c.CMD_NAME_REPLY, ch]) + name.encode("ascii")
-                )
+            name_bytes = bytearray(name.encode("ascii"))
+            if self.name_bytes_high and name_bytes:
+                # PRD 9.4 describes this fault as a payload byte >= 0x80, but
+                # every Qu sysex payload byte is wire-constrained to 7 bits
+                # (PRD 9.2/build_sysex) -- a genuine >=0x80 byte is a MIDI
+                # status byte and would abort the sysex outright (see Rule 4
+                # in MidiStreamParser), not survive as corrupted payload for
+                # the receiver to sanitise. 0x7F -- the top of the legal
+                # 7-bit range, and already the "non-printable" byte used in
+                # tests/protocol/test_names.py -- reaches the exact same
+                # receive-side sanitiser (parse_name_reply) without
+                # violating the wire format.
+                name_bytes[0] = 0x7F
+            await self._write(
+                writer,
+                build_sysex(self.midi_channel, bytes([c.CMD_NAME_REPLY, ch]) + bytes(name_bytes)),
             )
-            await writer.drain()
         elif parsed.command == c.CMD_SET_NAME and not self.ignore_name_sets:
             self.names[parsed.payload[0]] = parsed.payload[1:].decode("ascii", "replace")
 
@@ -266,20 +328,44 @@ class FakeQu:
 
     async def _do_sync(self, writer: asyncio.StreamWriter) -> None:
         self.sync_count += 1
-        writer.write(
+        if self.malformed_sysex:
+            # PRD 13.1: a sysex with no F7 terminator, sent immediately
+            # before the real reply. The client's parser must recover by
+            # treating the next F0 (the real reply, below) as aborting this
+            # truncated one (Rule 4 of MidiStreamParser), not by getting
+            # stuck waiting for a terminator that never comes.
+            await self._write(
+                writer,
+                c.QU_SYSEX_PREFIX
+                + bytes([self.midi_channel, c.CMD_SYSTEM_STATE_REPLY, self.box_id]),
+            )
+        await self._write(
+            writer,
             build_sysex(
                 self.midi_channel,
                 bytes([c.CMD_SYSTEM_STATE_REPLY, self.box_id, *self.firmware]),
-            )
+            ),
         )
-        await writer.drain()
+        if self.duplicate_state_reply:
+            # PRD 9.3.10: a second `11` reply, with a different BoxID, that
+            # the client must log a warning about and ignore, staying bound
+            # to the first.
+            await self._write(
+                writer,
+                build_sysex(
+                    self.midi_channel,
+                    bytes([c.CMD_SYSTEM_STATE_REPLY, self.box_id + 1, *self.firmware]),
+                ),
+            )
         if self.sync_delay:
             await asyncio.sleep(self.sync_delay)
         await self._push_state(writer)
         if self.send_end_marker:
-            writer.write(build_sysex(self.midi_channel, bytes([c.CMD_END_OF_SYNC])))
-            await writer.drain()
-        if self.drop_after_sync:
+            await self._write(writer, build_sysex(self.midi_channel, bytes([c.CMD_END_OF_SYNC])))
+        if self.drop_after_sync and (
+            self.reconnect_after_drops is None or self._drops_done < self.reconnect_after_drops
+        ):
+            self._drops_done += 1
             await self.drop_connection()
 
     async def _stream_meters(self, writer: asyncio.StreamWriter) -> None:
@@ -288,12 +374,10 @@ class FakeQu:
             for payload in cycle(self._meter_frames):
                 if not self.meters_enabled:
                     return
-                writer.write(
-                    build_sysex(
-                        self.midi_channel, bytes([c.CMD_METER_DATA]) + pack8to7(payload)
-                    )
+                await self._write(
+                    writer,
+                    build_sysex(self.midi_channel, bytes([c.CMD_METER_DATA]) + pack8to7(payload)),
                 )
-                await writer.drain()
                 await asyncio.sleep(1.0 / self.meter_rate)
         except (asyncio.CancelledError, OSError):
             pass
@@ -301,14 +385,26 @@ class FakeQu:
     async def _push_state(self, writer: asyncio.StreamWriter) -> None:
         """Emit the canned scene as an NRPN burst (PRD 9.3)."""
         items = list(self._scene.items())
+        chunks: list[bytes] = []
         for index, ((ch, param_id, vx), value) in enumerate(items):
             data = encode_nrpn(self.midi_channel, ch, param_id, value, vx)
             if self.drop_last_vx and index == len(items) - 1:
                 # PRD 9.3.7: a burst ending without its Data LSB. The client
                 # must flush the held update when 14 arrives.
                 data = data[:9]
-            writer.write(data)
-        await writer.drain()
+            chunks.append(data)
+        burst = b"".join(chunks)
+        if self.running_status and burst:
+            # PRD 13.1: every message in this burst shares one status byte
+            # (Bn on self.midi_channel) throughout, so running status holds
+            # across the whole burst, not just within one NRPN quad -- strip
+            # the repeated status byte from every CC triplet after the
+            # first.
+            out = bytearray(burst[:3])
+            for start in range(3, len(burst), 3):
+                out.extend(burst[start + 1 : start + 3])
+            burst = bytes(out)
+        await self._write(writer, burst)
 
 
 def main() -> None:  # pragma: no cover - manual dev tool
