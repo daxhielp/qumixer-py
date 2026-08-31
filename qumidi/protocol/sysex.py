@@ -137,3 +137,51 @@ def parse_name_reply(sx: QuSysex) -> tuple[int, str]:
             ch, sx.payload[1:].hex(" "),
         )
     return ch, "".join(chars)
+
+
+def unpack7to8(data: bytes) -> bytes:
+    """Expand the Qu's 7-bit packing to 8-bit bytes (PRD 12.2).
+
+    Every 7 payload bytes were sent as 8 MIDI bytes, with a leading byte
+    carrying the high bits:
+
+        0ABCDEFG 0AAAaaaa 0BBBbbbb ... 0GGGgggg
+
+    A is bit 6 of the leading byte and belongs to the FIRST following byte;
+    G is bit 0 and belongs to the seventh. A reversed convention produces
+    valid-looking output and corrupts every meter above the first.
+    """
+    out = bytearray()
+    for start in range(0, len(data), 8):
+        group = data[start : start + 8]
+        if not group:
+            break
+        high = group[0]
+        for index, byte in enumerate(group[1:]):
+            bit = (high >> (6 - index)) & 1
+            out.append(byte | (bit << 7))
+    return bytes(out)
+
+
+def pack8to7(data: bytes) -> bytes:
+    """Inverse of unpack7to8. The final group's high-bit byte is left-aligned."""
+    out = bytearray()
+    for start in range(0, len(data), 7):
+        group = data[start : start + 7]
+        high = 0
+        for index, byte in enumerate(group):
+            if byte & 0x80:
+                high |= 1 << (6 - index)
+        out.append(high)
+        out.extend(byte & 0x7F for byte in group)
+    return bytes(out)
+
+
+def decode_meter_db(raw_u16: int) -> float:
+    """Decode one 7Q8 meter value (PRD 12.2).
+
+    Unbounded above by the encoding -- (0xFFFF - 0x8000)/256 is about +128 dB.
+    Deliberately not clamped: an out-of-range reading is diagnostic
+    information about a layout error, and hiding it is worse than showing it.
+    """
+    return (raw_u16 - 0x8000) / 256.0
