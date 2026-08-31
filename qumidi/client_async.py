@@ -29,6 +29,7 @@ from qumidi.errors import (
     UnknownParameterError,
 )
 from qumidi.events import ChangeEvent, EventBus, Source
+from qumidi.layout import SurfaceMap
 from qumidi.meters import MeterController
 from qumidi.midi.messages import MidiMessage, NoteOn, SysEx
 from qumidi.midi.nrpn import NrpnDecoder, RawParamUpdate, encode_nrpn
@@ -222,10 +223,10 @@ class AsyncQuMixer:
         #: ``last_recalled_scene`` property for why this is the only scene
         #: state this client can ever know.
         self._last_recalled_scene: int | None = None
-        #: Placeholder for a future custom-surface-layer feature (PRD 6.3):
-        #: no ``SurfaceMap`` type exists yet, so this stays unset and is only
-        #: ever consulted -- never assigned -- by ``recall_scene()``.
-        self._surface_map: Any = None
+        #: The registered custom-layer surface map (PRD 6.3), if any. Set via
+        #: ``register_surface_map()`` and automatically invalidated by
+        #: ``recall_scene()`` since scenes can change the layer assignment.
+        self._surface_map: SurfaceMap | None = None
 
     # -- properties -------------------------------------------------------
 
@@ -936,9 +937,9 @@ class AsyncQuMixer:
             bytes([0xB0, 0x63, 0x00, 0xB0, 0x62, 0x5F, 0xB0, 0x06, 0x00, 0xB0, 0x26, 0x00])
         )
 
-    def register_surface_map(self, map: object) -> None:
+    def register_surface_map(self, surface_map: SurfaceMap) -> None:
         """Register a SurfaceMap to be invalidated on scene recalls."""
-        self._surface_map = map
+        self._surface_map = surface_map
 
     # -- inbound ----------------------------------------------------------
 

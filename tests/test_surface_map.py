@@ -2,6 +2,7 @@ import json
 
 import pytest
 
+from qumidi.client_async import AsyncQuMixer
 from qumidi.layout import SurfaceMap
 from qumidi.protocol.channels import Dca, Input, Mix
 
@@ -50,3 +51,27 @@ def test_the_module_contains_no_protocol_involvement() -> None:
     assert not re.search(r"0x[0-9A-Fa-f]{2}\b", source)
     assert "sysex" not in source.lower()
     assert "nrpn" not in source.lower()
+
+
+async def test_registered_surface_map_is_invalidated_on_scene_recall(fake_qu_factory) -> None:  # type: ignore[no-untyped-def]
+    """Verify that registering a SurfaceMap with the mixer invalidates it on recall."""
+    fake = await fake_qu_factory()
+    async with AsyncQuMixer("127.0.0.1", port=fake.port) as mixer:
+        await mixer.wait_synced()
+
+        # Create and register a SurfaceMap
+        surface_map = SurfaceMap.from_dict({1: Input(6), 2: Dca(1)})
+        mixer.register_surface_map(surface_map)
+
+        # Verify the map is valid before recall
+        assert surface_map.valid is True
+        assert surface_map.channel_at(1) == Input(6)
+
+        # Recall a scene
+        await mixer.recall_scene(1)
+
+        # Verify the map is now invalid after recall
+        assert surface_map.valid is False
+        with pytest.raises(RuntimeError) as excinfo:  # type: ignore
+            surface_map.channel_at(1)
+        assert "scene" in str(excinfo.value).lower()
