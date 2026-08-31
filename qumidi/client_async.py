@@ -14,6 +14,7 @@ import os
 import time
 from collections import defaultdict, deque
 from collections.abc import Callable
+from enum import Enum
 from types import TracebackType
 from typing import Any
 
@@ -23,6 +24,7 @@ from qumidi.errors import (
     QuConnectionError,
     QuConnectionLostError,
     ReadOnlyParameterError,
+    ShutdownNotPermittedError,
     SyncTimeoutError,
     UnknownParameterError,
 )
@@ -88,6 +90,17 @@ _NOT_A_QU_HINT = (
 )
 
 
+class MmcCommand(Enum):
+    """MIDI Machine Control transport commands (PRD 7.2)."""
+
+    STOP = 0x01
+    PLAY = 0x02
+    FF = 0x04
+    RW = 0x05
+    RECORD = 0x06
+    PAUSE = 0x09
+
+
 class AsyncQuMixer:
     """Async-first control of one Qu console."""
 
@@ -113,6 +126,7 @@ class AsyncQuMixer:
         reconnect_backoff_max: float = c.RECONNECT_BACKOFF_MAX,
         max_reconnect_attempts: int | None = None,
         meter_queue_size: int = c.METER_QUEUE_SIZE,
+        allow_shutdown: bool = False,
     ) -> None:
         self.host = host
         self.port = port
@@ -126,6 +140,7 @@ class AsyncQuMixer:
         self.name_request_timeout = name_request_timeout
         self.name_request_retries = name_request_retries
         self.scene_settle_delay = scene_settle_delay
+        self.allow_shutdown = allow_shutdown
         self.names: dict[ChannelId, str | None] = {}
         self._name_waiters: dict[int, asyncio.Future[str]] = {}
 
@@ -888,6 +903,42 @@ class AsyncQuMixer:
         # call here would silently re-run the entire paced sweep a second
         # time on every recall. Rely on the one resync() already does.
         await self.resync()
+
+    async def transport(self, command: MmcCommand) -> None:
+        """Send an MMC transport command: F0 7F 7F 06 TC F7."""
+        self._require_synced(f"send MMC {command.name}")
+        await self._send(bytes([0xF0, 0x7F, 0x7F, 0x06, command.value, 0xF7]))
+
+    async def shutdown(self, confirm: bool = False) -> None:
+        """Remotely shut the console down. Recovery requires a power cycle.
+
+        Guarded twice on purpose (PRD 7.2): allow_shutdown=True at
+        construction AND confirm=True here. Deliberately absent from the
+        object facade.
+        """
+        if not self.allow_shutdown:
+            raise ShutdownNotPermittedError(
+                "remote shutdown requires AsyncQuMixer(..., allow_shutdown=True). "
+                "Recovery from a remote shutdown requires physically power-cycling "
+                "the console."
+            )
+        if not confirm:
+            raise ShutdownNotPermittedError(
+                "remote shutdown requires confirm=True at the call site as well as "
+                "allow_shutdown=True at construction. Recovery requires a physical "
+                "power cycle."
+            )
+        self._require_synced("shut down the console")
+        log.warning("sending remote shutdown to %s; recovery needs a power cycle", self.host)
+        # PRD 7.2: hardcoded to MIDI channel 0 and CH = 00 in the spec, NOT
+        # the console's configured channel N. Implemented literally.
+        await self._send(
+            bytes([0xB0, 0x63, 0x00, 0xB0, 0x62, 0x5F, 0xB0, 0x06, 0x00, 0xB0, 0x26, 0x00])
+        )
+
+    def register_surface_map(self, map: object) -> None:
+        """Register a SurfaceMap to be invalidated on scene recalls."""
+        self._surface_map = map
 
     # -- inbound ----------------------------------------------------------
 
