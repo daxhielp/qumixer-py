@@ -28,6 +28,7 @@ guarantee as ``await`` in the async API, and raise the same exceptions.
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
 import inspect
 import logging
 import threading
@@ -38,6 +39,7 @@ from typing import Any, TypeVar
 
 from qumidi.client_async import AsyncQuMixer
 from qumidi.events import ChangeEvent
+from qumidi.model.base import _in_loop_thread
 from qumidi.protocol.channels import ChannelId
 from qumidi.transport.base import ConnectionState
 
@@ -48,6 +50,15 @@ T = TypeVar("T")
 #: Bounded, and drops the oldest queued callback (with a warning) once full --
 #: no unbounded queue anywhere in this library (PRD 18).
 _CALLBACK_QUEUE_MAX = 1024
+
+#: How often _run's blocking wait re-checks liveness (self._closed, and
+#: whether the in-flight future ever completed) while polling, rather than
+#: making one unbounded .result() call. This is not a ceiling on how long a
+#: legitimate call may take -- a multi-second ramp or a scene recall's resync
+#: waits as long as it needs to, since nothing times out while the mixer
+#: stays open -- it only bounds how long a call can be stuck *after* a
+#: concurrent close() has made it clear no result will ever arrive.
+_POLL_INTERVAL = 0.2
 
 #: Modules the generated object facade (task 9.1) lives in. A value whose
 #: type comes from one of these gets wrapped recursively by _wrap_value so
@@ -77,6 +88,11 @@ class QuMixer:
     def __init__(self, *args: Any, thread_safe: bool = False, **kwargs: Any) -> None:
         self._thread_safe = thread_safe
         self._closed = False
+        #: Guards the check-and-set of _closed in close() -- without it, two
+        #: threads calling close() concurrently could both observe
+        #: _closed=False before either sets it, and both run the teardown
+        #: sequence (double-stopping the loop, double-joining the thread).
+        self._close_lock = threading.Lock()
         self._callback_queue: deque[Callable[[], None]] = deque()
         self._queue_lock = threading.Lock()
         self._loop = asyncio.new_event_loop()
@@ -99,16 +115,58 @@ class QuMixer:
     async def _make(self, args: tuple[Any, ...], kwargs: dict[str, Any]) -> AsyncQuMixer:
         return AsyncQuMixer(*args, **kwargs)
 
-    def _run(self, coro: Coroutine[Any, Any, T]) -> T:
+    def _run(self, coro: Coroutine[Any, Any, T], *, _internal: bool = False) -> T:
         """Schedule ``coro`` onto this mixer's loop and block for the result.
 
         Safe to call from any thread -- including several at once, which is
         exactly how ``run_coroutine_threadsafe`` is meant to be used -- except
-        the loop's own thread, which would deadlock waiting on a loop that is
-        itself waiting for this call to return. Nothing in this module calls
-        it from there.
+        the loop's own thread. A callback running inline on the loop thread
+        (e.g. an ``on_change`` callback registered without
+        ``thread_safe=True``) that calls back into any proxied method would
+        otherwise block that very thread waiting on a coroutine that can only
+        ever run *on* it -- a reentrant deadlock. Detected and raised instead,
+        reusing the exact same ``_in_loop_thread`` check
+        ``ParamProxy._blocking`` (qumidi/model/base.py) already uses for its
+        own property-setter sugar path, rather than a second copy of it.
+
+        Every generated proxy method (coroutine and property alike) and
+        ``_wrap_value``'s blocking wrapper ultimately call this one method
+        (``run`` in ``_wrap_value`` is always this bound method), so the guard
+        and the polling below cover them all from this single place.
+
+        Waits in short polled slices rather than one unbounded ``.result()``
+        call, so a call racing a concurrent ``close()`` -- the submission
+        loses the race against ``loop.stop()`` actually taking effect, and
+        the coroutine is queued but never runs -- fails with a clear error
+        within one poll interval instead of hanging forever. This is not a
+        ceiling on how long a legitimate call may itself take: nothing times
+        out as long as the mixer stays open.
         """
-        return asyncio.run_coroutine_threadsafe(coro, self._loop).result()
+        if _in_loop_thread(self._loop):
+            coro.close()
+            raise RuntimeError(
+                "reentrant call into the sync facade: this was invoked from inside a "
+                "callback already running on this mixer's own loop thread (e.g. an "
+                "on_change callback registered without thread_safe=True calling an "
+                "explicit proxied method) -- blocking here would deadlock the loop "
+                "thread that call itself needs in order to run. Register callbacks "
+                "with thread_safe=True and use drain_callbacks() to run "
+                "callback-triggered writes from a different thread instead."
+            )
+        if not _internal and self._closed:
+            coro.close()
+            raise RuntimeError(f"{type(self).__name__} is closed; cannot submit further calls")
+        future = asyncio.run_coroutine_threadsafe(coro, self._loop)
+        while True:
+            try:
+                return future.result(timeout=_POLL_INTERVAL)
+            except concurrent.futures.TimeoutError:
+                if not _internal and self._closed and not future.done():
+                    future.cancel()
+                    raise RuntimeError(
+                        f"{type(self).__name__} was closed while this call was still "
+                        f"in flight; it may or may not have reached the console"
+                    ) from None
 
     def _stop_loop(self) -> None:
         self._loop.call_soon_threadsafe(self._loop.stop)
@@ -121,14 +179,22 @@ class QuMixer:
         self._run(self._async.connect())
 
     def close(self) -> None:
-        """Idempotent. Always joins the loop thread and never leaves a
+        """Idempotent -- concurrent close() calls are safe: _close_lock
+        serialises the check-and-set of _closed, so only one caller ever
+        proceeds past it and runs the actual close sequence; every other
+        concurrent caller sees _closed already True under the same lock and
+        returns immediately. Always joins the loop thread and never leaves a
         non-daemon thread behind -- even if the underlying close() raises.
         """
-        if self._closed:
-            return
-        self._closed = True
+        with self._close_lock:
+            if self._closed:
+                return
+            self._closed = True
         try:
-            self._run(self._async.close())
+            # _internal=True: this is the one call allowed to run *while*
+            # self._closed is already True (every other caller of _run is
+            # rejected once it is) -- it's the close sequence itself.
+            self._run(self._async.close(), _internal=True)
         finally:
             self._stop_loop()
 

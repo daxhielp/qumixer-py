@@ -9,6 +9,7 @@ missing an entry -- add it there instead.
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
 from collections.abc import Coroutine
 from typing import TYPE_CHECKING, Any
 
@@ -37,6 +38,13 @@ def _in_loop_thread(loop: asyncio.AbstractEventLoop) -> bool:
     except RuntimeError:
         return False
     return running is loop
+
+
+#: How often ParamProxy._blocking's wait re-checks loop liveness while
+#: polling, rather than making one unbounded .result() call -- not a ceiling
+#: on how long a legitimate write may itself take (see _blocking's own
+#: docstring).
+_BLOCKING_POLL_INTERVAL = 0.2
 
 
 class ParamProxy:
@@ -140,7 +148,16 @@ class ParamProxy:
         closed), or this is itself running on the owner loop's own thread (an
         `await`-based caller assigning to the property instead of using
         `set_db`/`set_raw`; blocking here would freeze the very loop the
-        write needs to run on).
+        write needs to run on). This is the same reentrancy guard
+        ``qumidi.client_sync.QuMixer._run`` reuses for the explicit-method
+        call path, via this exact ``_in_loop_thread`` function.
+
+        Waits in short polled slices rather than one unbounded ``.result()``
+        call, so a write racing a concurrent close (the submission loses the
+        race against the loop actually stopping, and the coroutine is queued
+        but never runs) fails with a clear error within one poll interval
+        instead of hanging forever -- without imposing any ceiling on how
+        long a legitimate write may itself take.
         """
         loop = getattr(self._mixer, "_owner_loop", None)
         if loop is None or (loop.is_running() and _in_loop_thread(loop)):
@@ -151,7 +168,20 @@ class ParamProxy:
                 f"`await proxy.set_db(...)` / `await proxy.set_raw(...)` instead. (This "
                 f"also fires if the mixer isn't connected yet, or has been closed.)"
             )
-        asyncio.run_coroutine_threadsafe(coro, loop).result()
+        future = asyncio.run_coroutine_threadsafe(coro, loop)
+        while True:
+            try:
+                future.result(timeout=_BLOCKING_POLL_INTERVAL)
+                return
+            except concurrent.futures.TimeoutError:
+                if not loop.is_running() and not future.done():
+                    future.cancel()
+                    raise RuntimeError(
+                        f"{self._channel.label} {self._param}: cannot assign {value!r} -- "
+                        f"the mixer's event loop stopped while this write was still in "
+                        f"flight (the mixer may have been closed concurrently); it may "
+                        f"or may not have reached the console"
+                    ) from None
 
     # -- writes -----------------------------------------------------------
 
