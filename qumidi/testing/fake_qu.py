@@ -11,12 +11,14 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
+from collections.abc import Iterable
+from itertools import cycle
 
 from qumidi.midi.messages import MidiMessage, NoteOn, ProgramChange, SysEx
 from qumidi.midi.nrpn import NrpnDecoder, encode_nrpn
 from qumidi.midi.parser import MidiStreamParser
 from qumidi.protocol import constants as c
-from qumidi.protocol.sysex import build_sysex, parse_sysex
+from qumidi.protocol.sysex import build_sysex, pack8to7, parse_sysex
 
 log = logging.getLogger(__name__)
 
@@ -46,6 +48,8 @@ class FakeQu:
         scenes: dict[int, dict[tuple[int, int, int], int]] | None = None,
         scene_names: dict[int, dict[int, str]] | None = None,
         drop_after_sync: bool = False,
+        meter_frames: Iterable[bytes] | None = None,
+        meter_rate: float = 20.0,
     ) -> None:
         self.model = model
         self.midi_channel = midi_channel
@@ -63,6 +67,10 @@ class FakeQu:
         self.name_requests: list[int] = []
         self.name_silent: set[int] = set(name_silent or ())
         self.ignore_name_sets = ignore_name_sets
+        #: PRD 12: whether the client has last asked for meters on/off.
+        self.meters_enabled = False
+        self._meter_frames = list(meter_frames or [])
+        self.meter_rate = meter_rate
 
         self.port = 0
         self.connections = 0
@@ -130,6 +138,17 @@ class FakeQu:
             self._tasks.discard(keepalive)
             if self._client is writer:
                 self._client = None
+            # PRD 12/4.2: a meter subscription is session-scoped, not
+            # persisted console state -- a new TCP session starts with meters
+            # off, exactly like the real console does. This must not be
+            # guarded by "self._client is writer" above: drop_connection()
+            # already nulls self._client itself (synchronously, without
+            # waiting for this coroutine to unwind), so by the time this
+            # finally block runs after a drop_connection()-initiated close,
+            # that identity check would already be false and this reset
+            # would never run -- leaving a test that polls meters_enabled
+            # after a drop racing a stale True from before the drop.
+            self.meters_enabled = False
             writer.close()
 
     async def _keepalive(self, writer: asyncio.StreamWriter) -> None:
@@ -180,6 +199,12 @@ class FakeQu:
             return
         if parsed.command == c.CMD_GET_SYSTEM_STATE:
             await self._do_sync(writer)
+        elif parsed.command == c.CMD_METERS:
+            self.meters_enabled = bool(parsed.payload and parsed.payload[0])
+            if self.meters_enabled and self._meter_frames:
+                task = asyncio.create_task(self._stream_meters(writer))
+                self._tasks.add(task)
+                task.add_done_callback(self._tasks.discard)
         elif parsed.command == c.CMD_GET_NAME:
             ch = parsed.payload[0]
             self.name_requests.append(ch)
@@ -226,6 +251,22 @@ class FakeQu:
             await writer.drain()
         if self.drop_after_sync:
             await self.drop_connection()
+
+    async def _stream_meters(self, writer: asyncio.StreamWriter) -> None:
+        """PRD 12: cycle the configured frames at meter_rate Hz while enabled."""
+        try:
+            for payload in cycle(self._meter_frames):
+                if not self.meters_enabled:
+                    return
+                writer.write(
+                    build_sysex(
+                        self.midi_channel, bytes([c.CMD_METER_DATA]) + pack8to7(payload)
+                    )
+                )
+                await writer.drain()
+                await asyncio.sleep(1.0 / self.meter_rate)
+        except (asyncio.CancelledError, OSError):
+            pass
 
     async def _push_state(self, writer: asyncio.StreamWriter) -> None:
         """Emit the canned scene as an NRPN burst (PRD 9.3)."""

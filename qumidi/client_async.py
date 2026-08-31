@@ -27,6 +27,7 @@ from qumidi.errors import (
     UnknownParameterError,
 )
 from qumidi.events import ChangeEvent, EventBus, Source
+from qumidi.meters import MeterController
 from qumidi.midi.messages import MidiMessage, NoteOn, SysEx
 from qumidi.midi.nrpn import NrpnDecoder, RawParamUpdate, encode_nrpn
 from qumidi.model.channel import (
@@ -110,6 +111,7 @@ class AsyncQuMixer:
         reconnect_backoff_min: float = c.RECONNECT_BACKOFF_MIN,
         reconnect_backoff_max: float = c.RECONNECT_BACKOFF_MAX,
         max_reconnect_attempts: int | None = None,
+        meter_queue_size: int = c.METER_QUEUE_SIZE,
     ) -> None:
         self.host = host
         self.port = port
@@ -186,11 +188,12 @@ class AsyncQuMixer:
             self._transport.set_reconnect_hook(self._after_reconnect)
         self._transport.on_state_change(self._on_transport_state)
 
-        # -- Slice 8: reconnect ----------------------------------------------
-        #: Placeholders until Slice 10 adds real meter subscriptions: kept
-        #: here (rather than added when that slice lands) so _after_reconnect
-        #: never needs editing to grow meter re-enable support later.
-        self._meters_enable_count = 0
+        # -- Slice 10: metering (PRD 12) --------------------------------------
+        #: MeterController.enable_count is the live, authoritative nesting
+        #: count -- _after_reconnect() consults it directly rather than
+        #: through a separate counter here, so there is only ever one source
+        #: of truth for "is metering currently wanted".
+        self.meters = MeterController(self, queue_size=meter_queue_size)
 
         # -- Slice 7: scene recall ------------------------------------------
         #: 1-based, matching the console's own display. See the
@@ -400,7 +403,22 @@ class AsyncQuMixer:
             self._sync_event.clear()
 
     async def _reenable_meters(self) -> None:
-        """Placeholder until Slice 10 adds real meter subscriptions."""
+        """PRD 4.4: if metering was enabled before the drop, re-enable it.
+
+        The old enable count is preserved across the reconnect (an N-deep
+        nesting of ``mixer.meters.enabled()`` context managers, some of which
+        may still be inside their ``async with`` block, must still see the
+        same count once this returns) by resetting the counter to zero and
+        replaying that many enable() calls -- each of which already knows how
+        to safely replace a pump task left running from before the drop (see
+        MeterController.enable()'s own comment).
+        """
+        count = self.meters.enable_count
+        if count == 0:
+            return
+        self.meters._enable_count = 0
+        for _ in range(count):
+            await self.meters.enable()
 
     async def _after_reconnect(self) -> None:
         """Re-establish everything the connection carried (PRD 4.4)."""
@@ -430,7 +448,7 @@ class AsyncQuMixer:
             self.cache.clear()
             self.names.clear()
             await self._sync()
-        if self._meters_enable_count > 0:
+        if self.meters.enable_count > 0:
             await self._reenable_meters()
         self._ready_event.set()
 
@@ -457,6 +475,11 @@ class AsyncQuMixer:
             raise
 
     async def close(self) -> None:
+        # PRD 12: the meter pump task must never outlive the connection it is
+        # decoding frames for, regardless of the enable count -- close() is
+        # not a disable(), it is "this is ending, no matter how many nested
+        # enabled() blocks were still open".
+        await self.meters.shutdown()
         if self._reader_task is not None:
             self._reader_task.cancel()
             try:
@@ -883,6 +906,11 @@ class AsyncQuMixer:
             return
         if parsed.command == c.CMD_SYSTEM_STATE_REPLY:
             self._on_state_reply(parsed)
+        elif parsed.command == c.CMD_METER_DATA:
+            # PRD 12.4: never decode here -- feed() is a non-blocking queue
+            # put; the actual unpacking happens off the read path, in
+            # MeterController's own pump task.
+            self.meters.feed(parsed.payload)
         elif parsed.command == c.CMD_NAME_REPLY:
             try:
                 raw_ch, name = parse_name_reply(parsed)

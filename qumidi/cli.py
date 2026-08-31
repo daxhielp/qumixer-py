@@ -87,6 +87,18 @@ async def cmd_monitor(args: argparse.Namespace) -> int:
     mixer.on_change(show, channel=channel, param=args.param)
     async with mixer:
         await mixer.wait_synced()
+        if args.meters:
+            # Tier: EXPERIMENTAL (PRD 12) -- a separate mode from ordinary
+            # change monitoring: metering is a firehose, on only for as long
+            # as this block runs, and streamed instead of, not alongside,
+            # the change-event view above.
+            from qumidi.protocol.meters import Meter, MeterSlot
+
+            slot = MeterSlot.input(parse_channel_ref(args.meters).index, Meter.POST_PREAMP)
+            async with mixer.meters.enabled():
+                async for frame in mixer.meters.stream():
+                    print(f"\r{args.meters} post-preamp: {frame.db(slot):7.1f} dB", end="")
+            return 0
         print(f"monitoring {args.host}; move something on the console. Ctrl-C to stop.")
         await asyncio.Event().wait()
     return 0
@@ -203,6 +215,10 @@ def build_parser() -> argparse.ArgumentParser:
     mon.add_argument("--channel", help="filter, e.g. input:6")
     mon.add_argument("--param", help="filter, e.g. fader")
     mon.add_argument("--include-sync", action="store_true", help="also show the sync burst")
+    mon.add_argument(
+        "--meters",
+        help="stream one channel's post-preamp meter instead (EXPERIMENTAL), e.g. input:6",
+    )
     mon.set_defaults(func=cmd_monitor)
 
     dump = sub.add_parser(

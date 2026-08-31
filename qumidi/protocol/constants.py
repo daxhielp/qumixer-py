@@ -86,3 +86,9 @@ PENDING_FLUSH_TIMEOUT: Final = 0.050
 ECHO_WINDOW: Final = 1.0
 SLOW_CALLBACK_WARN: Final = 0.100
 SCENE_SETTLE_DELAY: Final = 0.500
+
+# --- Metering (PRD 12) ----------------------------------------------------
+
+#: Bounded so a slow consumer drops OLD frames rather than growing without
+#: limit (PRD 12.4) -- a stale meter reading has no value.
+METER_QUEUE_SIZE: Final = 4
