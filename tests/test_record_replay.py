@@ -26,7 +26,8 @@ async def test_record_captures_inbound_bytes(fake_qu_factory, tmp_path) -> None:
     assert rc == 0
     data = out.read_bytes()
     assert len(data) > 0
-    assert bytes([0xB0, 0x63, 0x25]) in data     # the state burst
+    status = 0xB0 | fake.midi_channel
+    assert bytes([status, 0x63, 0x25]) in data  # the state burst
 
 
 async def test_record_frames_stops_after_n_meter_frames(fake_qu_factory, tmp_path) -> None:  # type: ignore[no-untyped-def]
@@ -63,7 +64,7 @@ async def test_record_frames_stops_after_n_meter_frames(fake_qu_factory, tmp_pat
     assert elapsed < 4.0
 
     data = out.read_bytes()
-    marker = c.QU_SYSEX_PREFIX + bytes([0, c.CMD_METER_DATA])
+    marker = c.QU_SYSEX_PREFIX + bytes([fake.midi_channel, c.CMD_METER_DATA])
     assert data.count(marker) >= 3
 
 

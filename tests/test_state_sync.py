@@ -144,3 +144,29 @@ async def test_membership_of_a_partially_known_dca_set_raises(fake_qu_factory, m
         await mixer.wait_synced()
         with pytest.raises(ValueUnknownError):
             mixer.membership(Input(6), "dca_assign").require()
+
+
+async def test_an_inbound_5507_normalises_onto_the_lr_assign_key(fake_qu_factory) -> None:  # type: ignore[no-untyped-def]
+    # PRD 14.8: 55/07 is a syntactically valid second encoding for LR assign.
+    # set() refuses to emit it, but the console may still speak it (which of
+    # the two it uses is an M6 open question), so an inbound 55/07 must land on
+    # the same cache key that an inbound 18/07 does -- not in a parallel
+    # mix_assign slot that nothing reads.
+    fake = await fake_qu_factory(scene={})
+    async with AsyncQuMixer("127.0.0.1", port=fake.port) as mixer:
+        await mixer.wait_synced()
+        await fake.send_surface_move(0x25, 0x55, 0x01, 0x07)
+        await asyncio.sleep(0.05)
+        assert mixer.get(Input(6), "lr_assign").raw == 0x01
+        assert mixer.get(Input(6), "mix_assign", 0x07).freshness is Freshness.UNKNOWN
+
+
+async def test_an_inbound_mix_assign_to_a_real_mix_is_left_alone(fake_qu_factory) -> None:  # type: ignore[no-untyped-def]
+    # The 14.8 normalisation must be surgical: only VX 07 is the LR alias.
+    fake = await fake_qu_factory(scene={})
+    async with AsyncQuMixer("127.0.0.1", port=fake.port) as mixer:
+        await mixer.wait_synced()
+        await fake.send_surface_move(0x25, 0x55, 0x01, 0x02)  # Mix 3
+        await asyncio.sleep(0.05)
+        assert mixer.get(Input(6), "mix_assign", 0x02).raw == 0x01
+        assert mixer.get(Input(6), "lr_assign").freshness is Freshness.UNKNOWN

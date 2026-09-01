@@ -65,7 +65,7 @@ from qumidi.protocol.channels import (
     nameable_channels,
 )
 from qumidi.protocol.params import Direction, FlaggedIndex, Interpolated, ParamSpec, SendTarget
-from qumidi.protocol.registry import REGISTRY, send_target_vx
+from qumidi.protocol.registry import REGISTRY, SEND_TARGET_VX, send_target_vx
 from qumidi.protocol.strips import StripApi
 from qumidi.protocol.sysex import (
     QuSysex,
@@ -1056,6 +1056,16 @@ class AsyncQuMixer:
             return
         if ChannelClass.GLOBAL in spec.applies_to:
             ch = GLOBAL
+        if spec.name == "mix_assign" and update.vx == SEND_TARGET_VX[Mix.LR]:
+            # PRD 14.8: 55/07 is a syntactically valid *second* encoding of LR
+            # assignment. set() rejects it outright so this library only ever
+            # emits 18, but the console may still emit 55/07 (which of the two
+            # it actually uses is an M6 open question). Normalise it onto the
+            # lr_assign key on read, or a console that speaks 55/07 would leave
+            # lr_assign UNKNOWN for ever while quietly filling a cache slot
+            # nothing reads -- and would strand this client's own lr_assign
+            # write expectation, reporting a spurious UNCONFIRMED.
+            spec = REGISTRY.lookup("lr_assign", ch.cls)
         raw = spec.domain.clamp_inbound(update.value, spec.name, ch.label)
         sub = sub_index_for(spec, update.vx, raw)
 

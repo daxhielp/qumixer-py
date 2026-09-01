@@ -235,7 +235,8 @@ async def test_mute_group_master_fire_is_identical_to_mute(fake_qu_factory) -> N
         fake.received.clear()
         await mixer.mute_group(2).fire(True)
         await asyncio.sleep(0.05)
-    assert bytes([0x90, 0x51, 0x7F, 0x90, 0x51, 0x00]) in bytes(fake.received)
+    status = 0x90 | fake.midi_channel
+    assert bytes([status, 0x51, 0x7F, status, 0x51, 0x00]) in bytes(fake.received)
     assert fake.mutes[0x51] is True
 
 

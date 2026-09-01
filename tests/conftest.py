@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import threading
 from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
 from typing import Any
@@ -9,6 +10,19 @@ import pytest
 
 from qumidi.client_async import AsyncQuMixer
 from qumidi.testing.fake_qu import FakeQu
+
+#: PRD 16 acceptance criterion 15: the whole suite must also pass with the
+#: console on a non-zero MIDI channel, not only the default 0. Both FakeQu
+#: fixtures below default to this rather than to FakeQu's own default of 0,
+#: so
+#:
+#:     QUMIDI_TEST_MIDI_CHANNEL=5 python -m pytest -m "not hardware"
+#:
+#: exercises a non-zero N everywhere a test does not itself pin midi_channel
+#: (a test that passes midi_channel= explicitly -- e.g. to assert channel-16
+#: overflow behaviour -- still wins, since an explicit keyword always beats a
+#: fixture-supplied default).
+_DEFAULT_TEST_MIDI_CHANNEL = int(os.environ.get("QUMIDI_TEST_MIDI_CHANNEL", "0"))
 
 # Test-only speed-up: AsyncQuMixer's default name_sweep_interval (20ms,
 # matching real hardware pacing) makes every test that connects a mixer pay a
@@ -30,6 +44,7 @@ async def fake_qu_factory() -> AsyncIterator[Callable[..., Awaitable[FakeQu]]]:
     started: list[FakeQu] = []
 
     async def make(**kwargs: object) -> FakeQu:
+        kwargs.setdefault("midi_channel", _DEFAULT_TEST_MIDI_CHANNEL)
         fake = FakeQu(**kwargs)  # type: ignore[arg-type]
         await fake.start()
         started.append(fake)
@@ -91,7 +106,7 @@ def fake_qu_sync() -> Iterator[_SyncFakeQu]:
     thread.start()
 
     async def make() -> FakeQu:
-        fake = FakeQu(scene=dict(_SYNC_FADER_SCENE))
+        fake = FakeQu(scene=dict(_SYNC_FADER_SCENE), midi_channel=_DEFAULT_TEST_MIDI_CHANNEL)
         await fake.start()
         return fake
 

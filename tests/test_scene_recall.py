@@ -17,7 +17,8 @@ async def test_recall_sends_bank_select_immediately_before_program_change(fake_q
         await mixer.wait_synced()
         fake.received.clear()
         await mixer.recall_scene(12)
-    assert bytes([0xB0, 0x00, 0x00, 0xB0, 0x20, 0x00, 0xC0, 0x0B]) in bytes(fake.received)
+    cc, pc = 0xB0 | fake.midi_channel, 0xC0 | fake.midi_channel
+    assert bytes([cc, 0x00, 0x00, cc, 0x20, 0x00, pc, 0x0B]) in bytes(fake.received)
 
 
 async def test_the_api_is_one_based(fake_qu_factory) -> None:  # type: ignore[no-untyped-def]
@@ -27,7 +28,7 @@ async def test_the_api_is_one_based(fake_qu_factory) -> None:  # type: ignore[no
         await mixer.wait_synced()
         fake.received.clear()
         await mixer.recall_scene(1)
-    assert bytes([0xC0, 0x00]) in bytes(fake.received)
+    assert bytes([0xC0 | fake.midi_channel, 0x00]) in bytes(fake.received)
 
 
 @pytest.mark.parametrize("bad", [0, -1, 101, 1000])

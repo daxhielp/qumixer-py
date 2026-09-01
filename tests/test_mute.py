@@ -14,7 +14,8 @@ async def test_mute_on_emits_the_documented_note_pair(fake_qu_factory) -> None: 
         fake.received.clear()
         await mixer.mute(Input(6), True)
         await asyncio.sleep(0.05)
-    assert bytes([0x90, 0x25, 0x7F, 0x90, 0x25, 0x00]) in bytes(fake.received)
+    status = 0x90 | fake.midi_channel
+    assert bytes([status, 0x25, 0x7F, status, 0x25, 0x00]) in bytes(fake.received)
 
 
 async def test_mute_off_uses_velocity_3f(fake_qu_factory) -> None:  # type: ignore[no-untyped-def]
@@ -24,7 +25,8 @@ async def test_mute_off_uses_velocity_3f(fake_qu_factory) -> None:  # type: igno
         fake.received.clear()
         await mixer.mute(Input(6), False)
         await asyncio.sleep(0.05)
-    assert bytes([0x90, 0x25, 0x3F, 0x90, 0x25, 0x00]) in bytes(fake.received)
+    status = 0x90 | fake.midi_channel
+    assert bytes([status, 0x25, 0x3F, status, 0x25, 0x00]) in bytes(fake.received)
 
 
 async def test_mute_uses_the_consoles_midi_channel(fake_qu_factory) -> None:  # type: ignore[no-untyped-def]
@@ -62,8 +64,9 @@ async def test_muting_a_dca_and_a_mute_group_is_the_same_write(fake_qu_factory) 
         await mixer.mute(MuteGroup(2), True)
         await asyncio.sleep(0.05)
     raw = bytes(fake.received)
-    assert bytes([0x90, 0x10, 0x7F]) in raw
-    assert bytes([0x90, 0x51, 0x7F]) in raw
+    status = 0x90 | fake.midi_channel
+    assert bytes([status, 0x10, 0x7F]) in raw
+    assert bytes([status, 0x51, 0x7F]) in raw
 
 
 async def test_mute_on_a_mixer_that_was_never_connected_raises() -> None:
@@ -107,6 +110,7 @@ async def test_the_note_pair_is_one_queued_payload(fake_qu_factory) -> None:  # 
         await asyncio.gather(*(mixer.mute(Input(n), True) for n in range(1, 9)))
         await asyncio.sleep(0.1)
     raw = bytes(fake.received)
+    status = 0x90 | fake.midi_channel
     for n in range(1, 9):
         note = 0x20 + n - 1
-        assert bytes([0x90, note, 0x7F, 0x90, note, 0x00]) in raw
+        assert bytes([status, note, 0x7F, status, note, 0x00]) in raw

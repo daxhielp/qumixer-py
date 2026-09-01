@@ -19,7 +19,8 @@ async def test_set_fader_by_raw_emits_the_golden_bytes(fake_qu_factory) -> None:
         fake.received.clear()
         await mixer.set(Input(6), "fader", raw=0x62)
         await asyncio.sleep(0.05)
-    assert bytes.fromhex("B063 25 B062 17 B006 62 B026 07".replace(" ", "")) in bytes(
+    cc = 0xB0 | fake.midi_channel
+    assert bytes([cc, 0x63, 0x25, cc, 0x62, 0x17, cc, 0x06, 0x62, cc, 0x26, 0x07]) in bytes(
         fake.received
     )
 
