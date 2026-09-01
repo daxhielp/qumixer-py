@@ -37,7 +37,17 @@ warn_unreachable = true
 asyncio_mode = "auto"
 markers = ["hardware: requires a physical Qu mixer (deselect with '-m \"not hardware\"')"]
 filterwarnings = ["error"]
-addopts = "--cov=qumidi.protocol --cov=qumidi.midi --cov=qumidi.state --cov-fail-under=90"
+# Coverage is measured on every run (protocol/midi/state.py -- PRD 13.6), but
+# --cov-fail-under is deliberately NOT set here: baked into addopts it would
+# apply to every invocation, including a focused `pytest tests/test_foo.py`
+# during normal development, which obviously can't exercise 90% of these
+# modules on its own and would exit 1 for a reason that has nothing to do
+# with the file actually under test. The 90% floor is instead enforced by
+# passing --cov-fail-under=90 explicitly on the full non-hardware suite,
+# which is what the release gate runs:
+#
+#   python -m pytest -m "not hardware" --cov-fail-under=90
+addopts = "--cov=qumidi.protocol --cov=qumidi.midi --cov=qumidi.state"
 
 [tool.coverage.report]
 exclude_lines = ["pragma: no cover", "if TYPE_CHECKING:", "\\.\\.\\."]
