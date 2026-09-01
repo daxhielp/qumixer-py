@@ -1,7 +1,14 @@
 import pytest
 
 from qumidi.errors import ValueUnknownError
-from qumidi.protocol.channels import Input, Mix
+from qumidi.protocol.channels import (
+    GLOBAL,
+    FxSend,
+    Input,
+    Mix,
+    channel_from_raw,
+    dsnake_socket_channel,
+)
 from qumidi.protocol.params import Fixed, FlaggedIndex, SendTarget
 from qumidi.protocol.registry import REGISTRY
 from qumidi.state import (
@@ -9,6 +16,7 @@ from qumidi.state import (
     CachedValue,
     Freshness,
     StateCache,
+    channel_from_key,
     sub_index_for,
 )
 
@@ -157,3 +165,47 @@ def test_items_enumerates_every_entry_for_snapshotting() -> None:
     cache.set(Input(6), "fader", None, 0x62, Freshness.KNOWN)
     cache.set(Input(6), "send_level", 0x02, 0x50, Freshness.UNCONFIRMED)
     assert len(list(cache.items())) == 2
+
+
+# -- channel_from_key: the inverse of StateCache.key() ------------------------
+
+
+@pytest.mark.parametrize(
+    "channel",
+    [
+        Input(6),
+        Input(1),
+        Mix.LR,
+        Mix.MIX3,
+        GLOBAL,
+        dsnake_socket_channel(0x00),
+        dsnake_socket_channel(0x27),
+    ],
+)
+def test_channel_from_key_is_the_exact_inverse_of_key(channel) -> None:  # type: ignore[no-untyped-def]
+    # The property that matters: whatever key() stored, channel_from_key()
+    # must hand back the identical ChannelId -- for the two synthetic classes
+    # as much as for a real wire channel.
+    ident, cls, _param, _sub = StateCache.key(channel, "fader", None)
+    assert channel_from_key(ident, cls) == channel
+
+
+def test_channel_from_key_does_not_mistake_global_for_the_channel_at_wire_zero() -> None:
+    # The regression this helper exists for: key() stores ch.index (0) for
+    # GLOBAL, and channel_from_raw(0) is the entirely unrelated FX Send 1.
+    # A reader that reaches for channel_from_raw on a key's first element
+    # silently mislabels every GLOBAL parameter.
+    ident, cls, _param, _sub = StateCache.key(GLOBAL, "group_mode", None)
+    assert ident == 0
+    assert channel_from_raw(ident) == FxSend(1)
+    assert channel_from_key(ident, cls) is GLOBAL
+
+
+def test_channel_from_key_keeps_global_and_dsnake_socket_zero_apart() -> None:
+    # Both carry wire value -1 and both have index 0; only the class in the
+    # key tells them apart, and the inverse has to honour that.
+    global_key = StateCache.key(GLOBAL, "group_mode", None)
+    socket_key = StateCache.key(dsnake_socket_channel(0x00), "dsnake_gain", None)
+    assert global_key[:2] != socket_key[:2]
+    assert channel_from_key(*global_key[:2]) is GLOBAL
+    assert channel_from_key(*socket_key[:2]) == dsnake_socket_channel(0x00)

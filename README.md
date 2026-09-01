@@ -62,6 +62,18 @@ with QuMixer("192.168.1.60") as mixer:
     mixer.input(6).fader.db = -6.0
 ```
 
+Everything the async API offers is reachable this way, sub-APIs included —
+`mixer.meters` and `mixer.strips` block like every other call, and the two
+async-only shapes have plain synchronous equivalents:
+
+```python
+with QuMixer("192.168.1.60") as mixer:
+    mixer.wait_synced()
+    with mixer.meters.enabled(), mixer.meters.stream() as frames:
+        for frame in frames:
+            print(frame.db(slot))
+```
+
 ## Command line
 
 ```bash

@@ -13,7 +13,13 @@ from dataclasses import dataclass
 from enum import Enum, auto
 
 from qumidi.errors import ValueUnknownError
-from qumidi.protocol.channels import ChannelClass, ChannelId
+from qumidi.protocol.channels import (
+    GLOBAL,
+    ChannelClass,
+    ChannelId,
+    channel_from_raw,
+    dsnake_socket_channel,
+)
 from qumidi.protocol.params import FlaggedIndex, ParamSpec, VxMode
 
 
@@ -47,6 +53,29 @@ UNKNOWN_VALUE = CachedValue(raw=None, freshness=Freshness.UNKNOWN, updated_at=No
 #: dsnake_socket_channel(0)), cannot collide with each other or with real
 #: channels.
 CacheKey = tuple[int, ChannelClass, str, int | None]
+
+
+def channel_from_key(ident: int, cls: ChannelClass) -> ChannelId:
+    """Recover the ChannelId a CacheKey was built from.
+
+    The exact inverse of ``StateCache.key()``'s channel substitution, and the
+    only correct way to turn a key (or a snapshot row, which stores the same
+    two fields verbatim) back into a channel. Anything that reaches for
+    ``channel_from_raw(key[0])`` instead is wrong for the two synthetic
+    classes: ``key()`` stores ``ch.index`` for GLOBAL and DSNAKE rather than
+    the wire value, so GLOBAL's ident is 0 -- which ``channel_from_raw``
+    happily decodes as the entirely unrelated FX Send 1.
+
+    Both readers of a key (``qumidi/snapshot.py``'s diff, and
+    ``qumidi dump-state``'s text output) call this rather than keeping their
+    own copy; ``key()`` and its inverse live side by side so a future change
+    to one is impossible to make without seeing the other.
+    """
+    if cls is ChannelClass.GLOBAL:
+        return GLOBAL
+    if cls is ChannelClass.DSNAKE:
+        return dsnake_socket_channel(ident)
+    return channel_from_raw(ident)
 
 
 def sub_index_for(spec: ParamSpec, vx: int | None, value: int) -> int | None:
@@ -126,6 +155,8 @@ class StateCache:
         #: distinct DSNAKE sockets get distinct keys, and GLOBAL vs. DSNAKE
         #: socket 0 (both index 0) are still kept apart because ch.cls is
         #: also part of the tuple.
+        #:
+        #: ``channel_from_key()`` above is the inverse; keep the two in step.
         synthetic = ch.cls in (ChannelClass.GLOBAL, ChannelClass.DSNAKE)
         ident = ch.index if synthetic else ch.value
         return (ident, ch.cls, param, sub)

@@ -19,7 +19,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from qumidi.protocol.channels import ChannelClass, ChannelId
-from qumidi.state import StateCache
+from qumidi.state import StateCache, channel_from_key
 
 SNAPSHOT_VERSION = 1
 
@@ -95,18 +95,18 @@ def load_snapshot(path: str | os.PathLike[str]) -> dict[str, Any]:
 
 
 def diff_snapshot(snapshot: dict[str, Any], cache: StateCache) -> list[SnapshotDiff]:
-    """Report every parameter whose current raw value differs from the snapshot."""
-    from qumidi.protocol.channels import GLOBAL, channel_from_raw, dsnake_socket_channel
+    """Report every parameter whose current raw value differs from the snapshot.
 
+    ``channel_raw``/``channel_class`` are the first two fields of the cache
+    key verbatim (see ``build_snapshot``), so recovering the channel is
+    exactly ``StateCache.key()``'s inverse -- ``channel_from_key`` in
+    ``qumidi/state.py``, which lives next to ``key()`` itself and is shared
+    with ``qumidi dump-state``'s text output rather than re-derived here.
+    """
     out: list[SnapshotDiff] = []
     for entry in snapshot["values"]:
         cls = ChannelClass[entry["channel_class"]]
-        if cls is ChannelClass.GLOBAL:
-            ch = GLOBAL
-        elif cls is ChannelClass.DSNAKE:
-            ch = dsnake_socket_channel(int(entry["channel_raw"]))
-        else:
-            ch = channel_from_raw(int(entry["channel_raw"]))
+        ch = channel_from_key(int(entry["channel_raw"]), cls)
         current = cache.get(ch, entry["param"], entry["sub_index"])
         if current.raw == entry["raw"]:
             continue

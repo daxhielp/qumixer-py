@@ -6,7 +6,9 @@ blocking the caller until the coroutine completes. The public surface is
 generated from ``AsyncQuMixer`` at import time (see the bottom of this
 module), not hand-maintained, so the two APIs cannot drift --
 ``test_the_two_apis_expose_the_same_method_names`` enforces this by diffing
-``dir()`` of the two classes.
+``dir()`` of the two classes *and* of two live instances, and
+``test_nothing_reachable_hands_back_an_unawaited_coroutine`` walks a live
+mixer to prove nothing reachable is left unwrapped.
 
 The object facade (``qumidi/model/``) is shared, unmodified protocol logic --
 built once, from ``async def`` methods, for both APIs (PRD 3, 11.1). Every
@@ -23,6 +25,27 @@ caller's own thread. Property *setters* (``proxy.db = ...``,
 ``proxy.raw = ...``) are handled entirely by ``ParamProxy._blocking``
 (``qumidi/model/base.py``): they block until the write is flushed, the same
 guarantee as ``await`` in the async API, and raise the same exceptions.
+
+The same ``_wrap_value`` treatment covers the two *instance*-level sub-APIs
+``mixer.meters`` (``qumidi.meters``, Slice 10) and ``mixer.strips``
+(``qumidi.protocol.strips``, Slice 11). Neither is visible to the generation
+loop below -- ``dir()`` on a *class* never sees an attribute set in
+``__init__`` -- so both arrive through ``__getattr__``, and both are listed
+in ``_FACADE_MODULES`` so their coroutine methods block like everything else.
+Their two async-only shapes get real synchronous equivalents rather than an
+error: ``mixer.meters.enabled()`` (an ``@asynccontextmanager``) becomes a
+plain ``with`` block via ``_SyncContextManager``, and
+``mixer.meters.stream()`` (an async generator) becomes a plain ``for`` loop
+via ``_SyncIterator``, which pulls one frame per iteration through the very
+same ``_run`` used by every other blocking call. Both are pure thread
+marshalling over the unmodified async implementation -- no second copy of any
+protocol logic, and no capability the sync API lacks::
+
+    with QuMixer("192.168.1.60") as mixer:
+        mixer.wait_synced()
+        with mixer.meters.enabled(), mixer.meters.stream() as frames:
+            for frame in frames:
+                ...
 """
 
 from __future__ import annotations
@@ -60,11 +83,28 @@ _CALLBACK_QUEUE_MAX = 1024
 #: concurrent close() has made it clear no result will ever arrive.
 _POLL_INTERVAL = 0.2
 
-#: Modules the generated object facade (task 9.1) lives in. A value whose
-#: type comes from one of these gets wrapped recursively by _wrap_value so
-#: its own methods keep blocking correctly; anything else (an int, a
-#: CachedValue, a plain str) is returned untouched.
-_FACADE_MODULES = frozenset({"qumidi.model.base", "qumidi.model.channel"})
+#: Modules whose objects are part of the async surface a sync caller reaches
+#: *through* the mixer -- the generated object facade (Task 9.1), plus the two
+#: instance-level sub-APIs the facade also has to cover: MeterController
+#: (Slice 10) and StripApi (Slice 11). A value whose type comes from one of
+#: these gets wrapped recursively by _wrap_value so its own methods keep
+#: blocking correctly; anything else (an int, a CachedValue, a plain str) is
+#: returned untouched.
+#:
+#: Adding a new async sub-API to AsyncQuMixer means adding its module here.
+#: test_nothing_reachable_hands_back_an_unawaited_coroutine
+#: (tests/test_sync_facade.py) is the structural guard that catches a
+#: forgotten entry -- it walks a live QuMixer, instance attributes included,
+#: rather than diffing dir() of the two *classes*, which by construction can
+#: never see an attribute set in AsyncQuMixer.__init__.
+_FACADE_MODULES = frozenset(
+    {
+        "qumidi.model.base",
+        "qumidi.model.channel",
+        "qumidi.meters",
+        "qumidi.protocol.strips",
+    }
+)
 
 
 class QuMixer:
@@ -271,14 +311,17 @@ class QuMixer:
     def on_scene_recalled(self, cb: Callable[[int], None]) -> None:
         self._async.on_scene_recalled(self._wrap_callback(cb))
 
+    def on_meter_layout_error(self, cb: Callable[[str], None]) -> None:
+        self._async.on_meter_layout_error(self._wrap_callback(cb))
+
     # -- fallback for plain instance attributes (.host, .cache, .events, ...) ---
 
     def __getattr__(self, name: str) -> Any:
         """Anything AsyncQuMixer sets outside its class body (``.host``,
-        ``.cache``, ``.events``, ``.names``, ...) isn't visible to the
-        generation loop below -- ``dir(AsyncQuMixer)`` doesn't see it either,
-        so it's not part of the drift guard -- but is still forwarded here so
-        it isn't simply unreachable from the sync facade.
+        ``.cache``, ``.events``, ``.names``, ``.meters``, ``.strips``, ...)
+        isn't visible to the generation loop below -- ``dir(AsyncQuMixer)``
+        doesn't see it either -- but is still forwarded here, through
+        ``_wrap_value``, so it is both reachable *and* blocking.
         """
         if name == "_async":
             raise AttributeError(
@@ -286,6 +329,18 @@ class QuMixer:
                 f"construction must have failed before it was set"
             )
         return _wrap_value(getattr(self._async, name), self._run)
+
+    def __dir__(self) -> list[str]:
+        """This class's own surface *plus* everything __getattr__ forwards.
+
+        Without this, ``dir(mixer)`` reports only the generated class-level
+        proxies and silently omits every instance attribute the async mixer
+        sets in ``__init__`` (``.meters``, ``.strips``, ``.cache``,
+        ``.events``, ...) -- which is precisely the blind spot that let the
+        unwrapped ``meters``/``strips`` sub-APIs ship. An instance-level
+        ``dir()`` now sees them, so the drift guard can too.
+        """
+        return sorted(set(super().__dir__()) | set(dir(self._async)))
 
 
 # -- generating the public surface from AsyncQuMixer (PRD 11.2) -----------------
@@ -297,6 +352,12 @@ class QuMixer:
 # __getattr__ above. Every public AsyncQuMixer method/property therefore gets
 # a real attribute on QuMixer, generated once here at import time, so the
 # names are genuinely present on the class.
+#
+# The converse is the trap this loop cannot escape and QuMixer.__dir__ exists
+# to cover: an attribute AsyncQuMixer sets in __init__ (.meters, .strips, ...)
+# is invisible here, so it gets no generated proxy and reaches the caller
+# through __getattr__ -- correctly wrapped only because its module is listed
+# in _FACADE_MODULES above.
 
 
 def _wrap_value(value: Any, run: Callable[[Coroutine[Any, Any, Any]], Any]) -> Any:
@@ -308,8 +369,20 @@ def _wrap_value(value: Any, run: Callable[[Coroutine[Any, Any, Any]], Any]) -> A
     object (``.send(Mix.LR)``, ``.fader``, ``.peq.hf``, ...) has its result
     wrapped too, recursively -- so a whole chain built purely from separate,
     synchronous caller-side expressions keeps behaving synchronously at every
-    step. Anything else (an int, a ``CachedValue``, a plain str) passes
-    through untouched.
+    step.
+
+    Two async-only *result* shapes are converted rather than handed back
+    broken, because a synchronous caller cannot write ``async with`` or
+    ``async for`` at all: an async generator object (``meters.stream()``)
+    becomes a blocking ``_SyncIterator``, and an async context manager
+    (``meters.enabled()``) becomes a blocking ``_SyncContextManager``. Both
+    are detected on the returned object, not on the callable -- an
+    ``@asynccontextmanager``-decorated method is an ordinary function as far
+    as ``inspect`` is concerned, so ``call_and_wrap`` above calls it first and
+    this recursion then sees what it actually produced.
+
+    Anything else (an int, a ``CachedValue``, a plain str) passes through
+    untouched.
     """
     if inspect.iscoroutinefunction(value):
 
@@ -327,15 +400,134 @@ def _wrap_value(value: Any, run: Callable[[Coroutine[Any, Any, Any]], Any]) -> A
         call_and_wrap.__name__ = getattr(value, "__name__", "call_and_wrap")
         call_and_wrap.__doc__ = value.__doc__
         return call_and_wrap
+    if inspect.isasyncgen(value):
+        return _SyncIterator(value, run)
+    if _is_async_only_context_manager(value):
+        return _SyncContextManager(value, run)
     if type(value).__module__ in _FACADE_MODULES:
         return _FacadeProxy(value, run)
     return value
 
 
+def _is_async_only_context_manager(value: Any) -> bool:
+    """True for something usable *only* as ``async with``.
+
+    ``AsyncQuMixer`` is excluded explicitly: it is an async context manager
+    too, but ``QuMixer`` already owns the connect/close lifecycle and
+    re-wrapping it here would hand out a second, competing one. Anything that
+    already offers ``__enter__`` is left alone for the same reason -- it has a
+    synchronous protocol of its own and does not need one synthesised.
+    """
+    cls = type(value)
+    if isinstance(value, AsyncQuMixer) or hasattr(cls, "__enter__"):
+        return False
+    return hasattr(cls, "__aenter__") and hasattr(cls, "__aexit__")
+
+
+async def _anext(agen: Any) -> Any:
+    """``await agen.__anext__()`` as a real coroutine.
+
+    ``agen.__anext__()`` returns an ``async_generator_asend``, which is
+    awaitable but is not a coroutine on every supported Python (3.10 is the
+    floor here), and ``asyncio.run_coroutine_threadsafe`` insists on a genuine
+    coroutine. Awaiting it inside one costs nothing and works everywhere.
+    """
+    return await agen.__anext__()
+
+
+async def _aclose(agen: Any) -> None:
+    """``await agen.aclose()`` as a real coroutine -- see ``_anext``."""
+    await agen.aclose()
+
+
+class _SyncIterator:
+    """A blocking iterator over one async generator (``meters.stream()``).
+
+    Each ``next()`` drives exactly one ``__anext__`` on the mixer's own loop
+    thread through the same ``_run`` every other blocking call uses, so a
+    caller waiting for the next meter frame is blocked in ``_run``'s polled
+    wait -- responsive to a concurrent ``close()``, and with no ceiling on how
+    long a legitimately quiet console may take to produce the next frame.
+
+    Also a context manager, so ``with mixer.meters.stream() as frames:``
+    unwinds the underlying generator deterministically instead of leaving it
+    to the garbage collector.
+    """
+
+    def __init__(self, agen: Any, run: Callable[[Coroutine[Any, Any, Any]], Any]) -> None:
+        self._agen: Any | None = agen
+        self._run = run
+
+    def __iter__(self) -> _SyncIterator:
+        return self
+
+    def __next__(self) -> Any:
+        if self._agen is None:
+            raise StopIteration
+        try:
+            return _wrap_value(self._run(_anext(self._agen)), self._run)
+        except StopAsyncIteration:
+            self._agen = None
+            raise StopIteration from None
+
+    def __enter__(self) -> _SyncIterator:  # noqa: PYI034 -- typing.Self needs py311+
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: TracebackType | None,
+    ) -> None:
+        self.close()
+
+    def close(self) -> None:
+        """Unwind the underlying async generator. Idempotent."""
+        agen, self._agen = self._agen, None
+        if agen is None:
+            return
+        try:
+            self._run(_aclose(agen))
+        except RuntimeError:
+            # The mixer was closed (or this is a reentrant call from its own
+            # loop thread) -- either way the generator cannot be unwound from
+            # here, and AsyncQuMixer.close() has already torn down the meter
+            # pump that was feeding it. Log rather than raise out of a
+            # cleanup path.
+            log.debug("could not unwind an async generator; the mixer is gone", exc_info=True)
+
+
+class _SyncContextManager:
+    """A blocking ``with`` wrapper around one async context manager.
+
+    ``mixer.meters.enabled()`` is the case that matters: enter and exit are
+    just ``enable()``/``disable()``, both already safe to run on the mixer's
+    loop thread, so this is pure marshalling -- the nesting count, the
+    exception path and the reconnect behaviour are all the async
+    implementation's, unchanged.
+    """
+
+    def __init__(self, cm: Any, run: Callable[[Coroutine[Any, Any, Any]], Any]) -> None:
+        self._cm = cm
+        self._run = run
+
+    def __enter__(self) -> Any:
+        return _wrap_value(self._run(self._cm.__aenter__()), self._run)
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: TracebackType | None,
+    ) -> bool:
+        return bool(self._run(self._cm.__aexit__(exc_type, exc, tb)))
+
+
 class _FacadeProxy:
-    """Wraps one object-facade instance (ParamProxy, BaseStrip, Send, ...) so
-    every method on it blocks, and every value it hands back is wrapped the
-    same way, recursively. See ``_wrap_value``'s docstring for the full rule.
+    """Wraps one object-facade instance (ParamProxy, BaseStrip, Send, ...) or
+    sub-API instance (MeterController, StripApi) so every method on it blocks,
+    and every value it hands back is wrapped the same way, recursively. See
+    ``_wrap_value``'s docstring for the full rule.
     """
 
     def __init__(self, target: Any, run: Callable[[Coroutine[Any, Any, Any]], Any]) -> None:
@@ -351,6 +543,15 @@ class _FacadeProxy:
         # only has to forward the assignment to the real object instead of
         # swallowing it into this wrapper's own __dict__.
         setattr(self._target, name, value)
+
+    def __dir__(self) -> list[str]:
+        """Report the wrapped object's surface, not this wrapper's.
+
+        Makes the proxy honest to ``dir()``/tab-completion, and is what lets
+        the structural drift guard in tests/test_sync_facade.py walk *into* a
+        proxied sub-API rather than stopping at an opaque wrapper.
+        """
+        return dir(self._target)
 
     def __repr__(self) -> str:
         return repr(self._target)

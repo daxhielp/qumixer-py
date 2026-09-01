@@ -107,7 +107,7 @@ async def cmd_monitor(args: argparse.Namespace) -> int:
 async def cmd_dump_state(args: argparse.Namespace) -> int:
     import json
 
-    from qumidi.protocol.channels import channel_from_raw
+    from qumidi.state import channel_from_key
 
     async with AsyncQuMixer(args.host, port=args.port) as mixer:
         await mixer.wait_synced()
@@ -120,8 +120,13 @@ async def cmd_dump_state(args: argparse.Namespace) -> int:
                 mixer.cache.items(), key=lambda item: (item[0][0], item[0][2], item[0][3] or -1)
             )
             print(f"BoxID {mixer.box_id}, firmware {mixer.firmware}, {len(rows)} values")
-            for (raw_ch, _cls, param, sub_index), value in rows:
-                ch = channel_from_raw(raw_ch)
+            for (ident, cls, param, sub_index), value in rows:
+                # StateCache.key() stores ch.index, not the wire byte, for the
+                # synthetic GLOBAL/DSNAKE classes -- channel_from_key is its
+                # inverse and the same helper snapshot.py's diff uses. Calling
+                # channel_from_raw(ident) here instead would print a GLOBAL
+                # parameter such as group_mode as "FX Send 1" (ident 0).
+                ch = channel_from_key(ident, cls)
                 name = mixer.names.get(ch)
                 label_display = f"{ch.label} ({name})" if name else ch.label
                 sub_display = "" if sub_index is None else f"[{sub_index}]"

@@ -98,24 +98,52 @@ class _SyncFakeQu:
             self._fake.send_surface_move(ch, param_id, value, vx), self._loop
         ).result()
 
+    def send_raw_sync(self, data: bytes) -> None:
+        """Emit arbitrary bytes, blocking until they're on the wire.
+
+        The send_surface_move_sync of raw traffic -- used for the MIDI-strip
+        layer (channel N+1), which is a separate namespace with no NRPN form.
+        """
+        asyncio.run_coroutine_threadsafe(self._fake.send_raw(data), self._loop).result()
+
 
 @pytest.fixture
-def fake_qu_sync() -> Iterator[_SyncFakeQu]:
+def fake_qu_sync_factory() -> Iterator[Callable[..., _SyncFakeQu]]:
+    """The threaded FakeQu of ``fake_qu_sync``, but configurable.
+
+    Same private loop thread and the same teardown; the only difference is
+    that the caller supplies FakeQu's keyword arguments (meter_frames,
+    midi_channel, ...). ``fake_qu_sync`` below is the default configuration
+    most of tests/test_sync_facade.py wants.
+    """
     loop = asyncio.new_event_loop()
     thread = threading.Thread(target=loop.run_forever, name="fake-qu-sync-loop", daemon=True)
     thread.start()
+    started: list[FakeQu] = []
 
-    async def make() -> FakeQu:
-        fake = FakeQu(scene=dict(_SYNC_FADER_SCENE), midi_channel=_DEFAULT_TEST_MIDI_CHANNEL)
-        await fake.start()
-        return fake
+    def make(**kwargs: object) -> _SyncFakeQu:
+        kwargs.setdefault("scene", dict(_SYNC_FADER_SCENE))
+        kwargs.setdefault("midi_channel", _DEFAULT_TEST_MIDI_CHANNEL)
 
-    fake = asyncio.run_coroutine_threadsafe(make(), loop).result()
-    handle = _SyncFakeQu(fake, loop)
+        async def start() -> FakeQu:
+            fake = FakeQu(**kwargs)  # type: ignore[arg-type]
+            await fake.start()
+            return fake
+
+        fake = asyncio.run_coroutine_threadsafe(start(), loop).result()
+        started.append(fake)
+        return _SyncFakeQu(fake, loop)
+
     try:
-        yield handle
+        yield make
     finally:
-        asyncio.run_coroutine_threadsafe(fake.stop(), loop).result()
+        for fake in started:
+            asyncio.run_coroutine_threadsafe(fake.stop(), loop).result()
         loop.call_soon_threadsafe(loop.stop)
         thread.join(timeout=5.0)
         loop.close()
+
+
+@pytest.fixture
+def fake_qu_sync(fake_qu_sync_factory) -> _SyncFakeQu:  # type: ignore[no-untyped-def]
+    return fake_qu_sync_factory()

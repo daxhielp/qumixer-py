@@ -3,8 +3,9 @@ import json
 import pytest
 
 from qumidi.client_async import AsyncQuMixer
-from qumidi.protocol.channels import Input
-from qumidi.snapshot import load_snapshot
+from qumidi.protocol.channels import GLOBAL, Input, dsnake_socket_channel
+from qumidi.snapshot import build_snapshot, diff_snapshot, load_snapshot
+from qumidi.state import Freshness, StateCache
 
 SCENE = {(0x25, 0x17, 0x07): 0x62, (0x25, 0x20, 0x02): 0x50}
 
@@ -109,6 +110,51 @@ async def test_diff_of_an_identical_snapshot_is_empty(fake_qu_factory) -> None: 
     async with AsyncQuMixer("127.0.0.1", port=fake.port) as mixer:
         await mixer.wait_synced()
         assert mixer.diff(mixer.snapshot()) == []
+
+
+async def test_diff_reconstructs_a_global_channel_from_its_snapshot_row(  # type: ignore[no-untyped-def]
+    fake_qu_factory,
+) -> None:
+    # group_mode is the one registered GLOBAL parameter (PRD 7.2). Its
+    # snapshot row carries channel_raw=0 (StateCache.key() stores ch.index
+    # for GLOBAL), so a reader that decoded that as a wire byte would look
+    # the value up under FX Send 1, find nothing, and report a phantom diff.
+    fake = await fake_qu_factory(scene={(0x20, 0x5E, 0x00): 0x01})
+    async with AsyncQuMixer("127.0.0.1", port=fake.port) as mixer:
+        await mixer.wait_synced()
+        snap = mixer.snapshot()
+        row = next(e for e in snap["values"] if e["param"] == "group_mode")
+        assert (row["channel_class"], row["channel_raw"]) == ("GLOBAL", 0)
+        # Same cache, same values: reconstruction is correct only if this
+        # finds the GLOBAL entry rather than an absent FX Send 1 one.
+        assert mixer.diff(snap) == []
+        snap["values"][snap["values"].index(row)] = {**row, "raw": 0x00}
+        diffs = mixer.diff(snap)
+    assert len(diffs) == 1
+    assert diffs[0].channel is GLOBAL
+    assert (diffs[0].snapshot_raw, diffs[0].current_raw) == (0x00, 0x01)
+
+
+def test_diff_reconstructs_a_dsnake_socket_channel_from_its_snapshot_row() -> None:
+    # No parameter registered today keys under the synthetic DSNAKE class, so
+    # this drives the third branch of the shared reconstruction helper
+    # directly through diff_snapshot's public contract, with a cache built by
+    # hand -- the branch must keep working for whichever future task first
+    # registers a DSNAKE-keyed parameter.
+    socket = dsnake_socket_channel(0x05)
+    cache = StateCache()
+    cache.set(socket, "dsnake_gain", None, 0x40, Freshness.KNOWN)
+    snapshot = build_snapshot(
+        box_id=3, model="QU32", firmware=(1, 9), cache=cache, names={}, now=0.0
+    )
+    row = snapshot["values"][0]
+    assert (row["channel_class"], row["channel_raw"]) == ("DSNAKE", 0x05)
+    assert diff_snapshot(snapshot, cache) == []
+    snapshot["values"][0] = {**row, "raw": 0x10}
+    diffs = diff_snapshot(snapshot, cache)
+    assert len(diffs) == 1
+    assert diffs[0].channel == socket
+    assert (diffs[0].snapshot_raw, diffs[0].current_raw) == (0x10, 0x40)
 
 
 async def test_there_is_no_blind_restore(fake_qu_factory) -> None:

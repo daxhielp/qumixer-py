@@ -387,6 +387,18 @@ class AsyncQuMixer:
     def on_scene_recalled(self, cb: Callable[[int], None]) -> None:
         self.events.on_scene_recalled(cb)
 
+    def on_meter_layout_error(self, cb: Callable[[str], None]) -> None:
+        """PRD 12.2/12.3: metering was disabled because a frame did not match
+        the layout. ``cb`` receives the diagnostic message.
+
+        A mixer-level shortcut like the five above, and for the same reason:
+        it is what ``QuMixer`` overrides to honour ``thread_safe=True``.
+        Registering straight on ``mixer.events`` still works and still
+        delivers on the loop thread, exactly as it does for every other
+        event.
+        """
+        self.events.on_meter_layout_error(cb)
+
     async def refresh(self, ch: ChannelId | None = None, param: str | None = None) -> None:
         """Re-read state from the console.
 
