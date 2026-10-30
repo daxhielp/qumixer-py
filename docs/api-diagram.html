@@ -1,0 +1,859 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>qumixer-py API Map</title>
+<style>
+:root{
+  --bg:#f6f7f9; --card:#ffffff; --ink:#1b1f27; --muted:#5d6675; --line:#c9cfda;
+  --w:#1f6feb; --r:#14876a; --p:#a35c00; --bad:#c0362c; --hl:#fff4cc;
+  --s0:#dbe8ff; --s1:#d9f2e8; --s2:#fde7c8; --s3:#eadcf9; --s4:#ffd9d6; --s5:#e2e6ec;
+  --mono: ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0f1218; --card:#171b23; --ink:#e6e9ef; --muted:#97a1b3; --line:#323a49;
+    --w:#5aa2ff; --r:#3ccf9f; --p:#f0a43c; --bad:#ff7b72; --hl:#3a3216;
+    --s0:#1d3358; --s1:#154236; --s2:#4a3512; --s3:#3a2a58; --s4:#5a2622; --s5:#283040;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0f1218; --card:#171b23; --ink:#e6e9ef; --muted:#97a1b3; --line:#323a49;
+  --w:#5aa2ff; --r:#3ccf9f; --p:#f0a43c; --bad:#ff7b72; --hl:#3a3216;
+  --s0:#1d3358; --s1:#154236; --s2:#4a3512; --s3:#3a2a58; --s4:#5a2622; --s5:#283040;
+}
+*{box-sizing:border-box}
+html{color-scheme:light dark}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+.wrap{max-width:1080px;margin:0 auto;padding:20px 16px 60px}
+h1{font-size:22px;margin:0 0 4px}
+h2{font-size:17px;margin:0 0 6px}
+p.sub{margin:0 0 16px;color:var(--muted)}
+code,pre,.mono{font-family:var(--mono);font-size:12.5px}
+code{background:var(--s5);padding:1px 5px;border-radius:4px}
+pre{background:var(--s5);padding:10px 12px;border-radius:8px;overflow:auto;margin:8px 0}
+nav.tabs{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 14px;border-bottom:1px solid var(--line);padding-bottom:10px}
+nav.tabs button, .btn{font:inherit;font-size:14px;color:var(--ink);background:var(--card);border:1px solid var(--line);border-radius:8px;padding:6px 12px;cursor:pointer}
+nav.tabs button[aria-selected="true"], .btn.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.btn:disabled{opacity:.4;cursor:default}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin:0 0 14px}
+figure{margin:0}
+figcaption{color:var(--muted);font-size:13px;margin-top:6px}
+svg{display:block;max-width:100%;height:auto}
+svg text{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;fill:var(--ink)}
+svg .mut{fill:var(--muted)}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:0 0 10px}
+.row label{font-size:13px;color:var(--muted)}
+select,input[type=number],input[type=text],textarea{font:inherit;font-size:14px;background:var(--card);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:4px 8px}
+textarea{width:100%;font-family:var(--mono);font-size:12.5px;min-height:64px}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+@media(max-width:760px){.grid3{grid-template-columns:1fr}}
+.card{border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:var(--bg)}
+.card h4{margin:0 0 4px;font-size:11.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.card .mono{white-space:pre-wrap;word-break:break-word}
+/* map */
+.node rect{fill:var(--card);stroke:var(--line);stroke-width:1.5}
+.node.kw rect{stroke:var(--w)} .node.kr rect{stroke:var(--r)} .node.kn rect{stroke:var(--muted)}
+.node{cursor:pointer}
+.node text.t{font-size:12.5px;font-weight:600} .node text.s{font-size:10.5px;fill:var(--muted)}
+.node.on rect{stroke-width:3;fill:var(--hl)}
+.node.dim{opacity:.35}
+.node:focus{outline:none}.node:focus rect{stroke-width:3}
+.edge{fill:none;stroke-width:1.6}
+.edge.kw{stroke:var(--w)} .edge.kr{stroke:var(--r)} .edge.kp{stroke:var(--p);stroke-dasharray:5 4}
+.edge.dim{opacity:.2}
+.edge.on{stroke-width:3;stroke-dasharray:8 5;animation:flow 0.8s linear infinite}
+@keyframes flow{to{stroke-dashoffset:-13}}
+@media (prefers-reduced-motion:reduce){.edge.on{animation:none}}
+.elab{font-size:10.5px;paint-order:stroke;stroke:var(--card);stroke-width:4px;stroke-linejoin:round;text-anchor:middle}
+.elab.kw{fill:var(--w)}.elab.kr{fill:var(--r)}.elab.kp{fill:var(--p)}
+.mw{fill:var(--w)}.mr{fill:var(--r)}.mp{fill:var(--p)}
+.legend{display:flex;gap:16px;flex-wrap:wrap;font-size:12.5px;color:var(--muted);margin-top:8px}
+.legend i{display:inline-block;width:22px;height:0;border-top:3px solid;vertical-align:middle;margin-right:5px}
+/* bytes */
+.bytes{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}
+.blk{border-radius:8px;padding:6px 9px;min-width:70px;max-width:220px}
+.blk b{display:block;font-family:var(--mono);font-size:14px}
+.blk span{display:block;font-size:11.5px;color:var(--muted);line-height:1.3}
+.blk{color:var(--ink)}
+.s0{background:var(--s0)}.s1{background:var(--s1)}.s2{background:var(--s2)}.s3{background:var(--s3)}.s4{background:var(--s4)}.s5{background:var(--s5)}
+.stephead{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.stepno{font-family:var(--mono);font-size:12px;color:var(--muted)}
+.dots{display:flex;gap:5px;flex-wrap:wrap;margin:0 0 10px}
+.dot{width:26px;height:6px;border-radius:3px;background:var(--line);border:0;padding:0;cursor:pointer}
+.dot.on{background:var(--ink)} .dot.done{background:var(--muted)}
+.note{border-left:3px solid var(--p);padding:4px 10px;margin:8px 0;color:var(--muted);font-size:13.5px}
+.good{color:var(--r)} .bad{color:var(--bad)}
+.ladder .msg{cursor:pointer}
+.ladder .msg.on .hit{fill:var(--hl)}
+.hit{fill:transparent}
+.st rect{fill:var(--card);stroke:var(--line);stroke-width:1.5}
+.st.on rect{fill:var(--hl);stroke:var(--ink);stroke-width:2.5}
+.fc rect{fill:var(--card);stroke:var(--line);stroke-width:1.5}
+.fc.on rect{fill:var(--hl);stroke:var(--ink);stroke-width:2.5}
+.fc.out rect{stroke:var(--r)} .fc.bad rect{stroke:var(--bad)}
+.fcedge{fill:none;stroke:var(--line);stroke-width:1.6}
+.fcedge.on{stroke:var(--ink);stroke-width:3}
+footer{color:var(--muted);font-size:12.5px;margin-top:24px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>qumixer-py — how the API works, end to end</h1>
+  <p class="sub">A Python client for Allen &amp; Heath Qu mixers over MIDI-on-TCP. Click any box for the code behind it, or step through a real call and watch the bytes, the cache and the echo ledger change. Every byte shown was produced by the library itself.</p>
+
+  <nav class="tabs" role="tablist" aria-label="Sections">
+    <button role="tab" aria-selected="true" data-tab="map">1 · System map &amp; walkthroughs</button>
+    <button role="tab" aria-selected="false" data-tab="sync">2 · Connect, sync &amp; reconnect</button>
+    <button role="tab" aria-selected="false" data-tab="echo">3 · Inbound rules &amp; freshness</button>
+    <button role="tab" aria-selected="false" data-tab="lab">4 · Byte lab</button>
+  </nav>
+
+  <!-- ============ TAB 1 ============ -->
+  <section id="tab-map">
+    <div class="panel">
+      <figure>
+        <svg id="map" viewBox="0 0 990 430" role="img" aria-label="Writes flow left to right along the top: your code, the facade, AsyncQuMixer, the outbound queue, the TCP transport, then the mixer. Inbound traffic flows right to left along the bottom: transport parser, NRPN decoder, ingest, then the state cache and event bus, and finally your code. The registry is shared by encode and decode, and the echo ledger links the two paths."></svg>
+        <figcaption>The write path (blue, top) and the read path (green, bottom) are separate pipelines that meet in two places: the <b>registry</b> (the same table encodes outgoing and decodes incoming) and the <b>echo ledger</b> (how an echo of your own write is told apart from someone moving a fader).</figcaption>
+      </figure>
+      <div class="legend">
+        <span><i style="color:var(--w)"></i>write path</span>
+        <span><i style="color:var(--r)"></i>read path</span>
+        <span><i style="color:var(--p);border-top-style:dashed"></i>side channel (bypasses the queue / the cache)</span>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="row">
+        <label for="scn">Walkthrough</label>
+        <select id="scn"></select>
+        <button class="btn" id="prev">← Back</button>
+        <button class="btn" id="next">Next →</button>
+        <button class="btn" id="reset">Reset</button>
+      </div>
+      <pre id="code"></pre>
+      <div class="dots" id="dots"></div>
+      <div id="stepbox">
+        <div class="stephead"><h2 id="stitle"></h2><span class="stepno" id="sno"></span></div>
+        <div id="sbytes" class="bytes"></div>
+        <div id="stext"></div>
+      </div>
+      <div class="grid3" style="margin-top:12px">
+        <div class="card"><h4>State cache · Input 6</h4><div class="mono" id="i-cache"></div></div>
+        <div class="card"><h4>Echo ledger</h4><div class="mono" id="i-ledger"></div></div>
+        <div class="card"><h4>Outbound queue</h4><div class="mono" id="i-queue"></div></div>
+      </div>
+    </div>
+
+    <div class="panel" id="nodeinfo">
+      <h2 id="ni-title">Click a box</h2>
+      <div id="ni-body" class="mut" style="color:var(--muted)">Each box in the map is a real component. Selecting one shows what it owns and where it lives.</div>
+    </div>
+  </section>
+
+  <!-- ============ TAB 2 ============ -->
+  <section id="tab-sync" hidden>
+    <div class="panel">
+      <div class="row">
+        <button class="btn on" data-path="happy">Happy path: connect</button>
+        <button class="btn" data-path="drop">Link drops: reconnect</button>
+      </div>
+      <figure>
+        <svg id="states" viewBox="0 0 990 150" role="img" aria-label="Connection states: DISCONNECTED, CONNECTING, CONNECTED, SYNCING, READY in a row. From READY a link-dead arrow leads down to RECONNECTING, which returns to SYNCING after a reconnect."></svg>
+        <figcaption>The six <code>ConnectionState</code> values. The highlighted state follows the message you select in the ladder below.</figcaption>
+      </figure>
+    </div>
+    <div class="panel">
+      <figure>
+        <svg id="ladder" class="ladder" viewBox="0 0 990 560" role="img" aria-label="Message ladder between the qumixer-py client on the left and the Qu mixer on the right, in time order from top to bottom."></svg>
+        <figcaption>Time runs downward. Click any row for the timeout, the byte layout and what happens if it goes wrong.</figcaption>
+      </figure>
+      <div id="ladder-detail" class="panel" style="margin:12px 0 0;background:var(--bg)"></div>
+    </div>
+  </section>
+
+  <!-- ============ TAB 3 ============ -->
+  <section id="tab-echo" hidden>
+    <div class="panel">
+      <p style="margin-top:0">Every inbound parameter update lands in <code>_ingest()</code> and is labelled with a <b>Source</b>. This is what keeps a "mirror this fader" script from chasing its own tail. Pick an inbound case:</p>
+      <div class="row" id="cases"></div>
+      <figure>
+        <svg id="flow" viewBox="0 0 990 500" role="img" aria-label="Decision flow for an inbound NRPN update: check the MIDI channel, check the registry, check the echo ledger, check whether a sync burst is running, and end in one of: strip traffic, dropped, LOCAL, SYNC, skipped, or MIXER."></svg>
+        <figcaption>Order matters: the echo check runs <i>before</i> the sync check, otherwise an echo that lands during a resync would be mislabelled SYNC and the write would later be reported as unconfirmed.</figcaption>
+      </figure>
+      <div id="case-text" class="note"></div>
+    </div>
+    <div class="panel">
+      <h2>Freshness: a cached value is never just a number</h2>
+      <figure>
+        <svg id="fresh" viewBox="0 0 990 230" role="img" aria-label="Freshness states: UNKNOWN becomes KNOWN when the mixer reports it. KNOWN becomes UNCONFIRMED when a write gets no echo within one second. KNOWN or UNCONFIRMED become STALE on disconnect or scene recall. STALE becomes KNOWN again on resync."></svg>
+        <figcaption>Reading <code>.raw</code> on an <code>UNKNOWN</code> value raises <code>ValueUnknownError</code> instead of inventing a default. The library never synthesises a value it was not told.</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <!-- ============ TAB 4 ============ -->
+  <section id="tab-lab" hidden>
+    <div class="panel">
+      <h2>Encode: pick a call, see the bytes</h2>
+      <div class="row">
+        <label>Operation <select id="l-op">
+          <option value="fader">fader.set_db()</option>
+          <option value="send">send(target).set_level_db()</option>
+          <option value="mute">mute()</option>
+        </select></label>
+        <label>Strip <select id="l-cls"></select></label>
+        <label>No. <input id="l-n" type="number" min="1" max="32" value="6" style="width:64px"></label>
+        <label id="l-tgt-w">Send to <select id="l-tgt"></select></label>
+        <label>Mixer MIDI ch <select id="l-mc"></select></label>
+      </div>
+      <div class="row" id="l-val-w">
+        <label>Level <input id="l-db" type="range" min="-60" max="10" step="0.5" value="-6" style="width:260px"></label>
+        <b class="mono" id="l-dbv"></b>
+      </div>
+      <div id="l-bytes" class="bytes"></div>
+      <div id="l-text"></div>
+      <pre id="l-code"></pre>
+      <figure style="margin-top:10px">
+        <svg id="taper" viewBox="0 0 600 240" role="img" aria-label="Fader taper: raw value 0 to 127 on the horizontal axis against dB on the vertical axis, piecewise linear between measured anchor points."></svg>
+        <figcaption>The fader taper is sparse anchor points joined by straight lines, not a formula (dashed grey: the undefined 0x01–0x0B band, extrapolated). dB → raw rounds to the nearest raw step, so the dB you read back can differ slightly from the dB you set; <code>.raw</code> is the truth.</figcaption>
+      </figure>
+    </div>
+    <div class="panel">
+      <h2>Decode: paste bytes, see what the library sees</h2>
+      <textarea id="d-in" spellcheck="false">b0 63 25 b0 62 17 b0 06 4c b0 26 07
+90 25 3f 90 25 00
+f0 00 00 1a 50 11 01 00 00 03 25 4b 69 63 6b f7
+fe</textarea>
+      <div id="d-out" style="margin-top:8px"></div>
+    </div>
+  </section>
+
+  <footer>Generated from the code in <code>qumixer_py/</code> (client_async.py, transport/, midi/, protocol/). Constants quoted here come from <code>protocol/constants.py</code>; they can change in the library.</footer>
+</div>
+
+<script>
+"use strict";
+const NS = "http://www.w3.org/2000/svg";
+function el(tag, attrs, parent, text){
+  const e = document.createElementNS(NS, tag);
+  for (const k in (attrs||{})) e.setAttribute(k, attrs[k]);
+  if (text !== undefined) e.textContent = text;
+  if (parent) parent.appendChild(e);
+  return e;
+}
+function h(tag, attrs, parent, html){
+  const e = document.createElement(tag);
+  for (const k in (attrs||{})) e.setAttribute(k, attrs[k]);
+  if (html !== undefined) e.innerHTML = html;
+  if (parent) parent.appendChild(e);
+  return e;
+}
+const $ = id => document.getElementById(id);
+const hex = (n, w=2) => n.toString(16).toUpperCase().padStart(w, "0");
+function mk(svg,kind){ return "url(#"+svg.id+"-a"+kind+")"; }
+function markers(svg){
+  const d = el("defs", {}, svg);
+  for (const [id, cls] of [["aw","mw"],["ar","mr"],["ap","mp"]]){
+    const m = el("marker", {id:svg.id+"-"+id, viewBox:"0 0 10 10", refX:"9", refY:"5", markerUnits:"userSpaceOnUse", markerWidth:"10", markerHeight:"10", orient:"auto-start-reverse"}, d);
+    el("path", {d:"M0 0 L10 5 L0 10 z", class:cls}, m);
+  }
+}
+
+/* ---------------- tabs ---------------- */
+document.querySelectorAll("nav.tabs button").forEach(b => b.addEventListener("click", () => {
+  document.querySelectorAll("nav.tabs button").forEach(x => x.setAttribute("aria-selected", x === b));
+  ["map","sync","echo","lab"].forEach(t => $("tab-"+t).hidden = (t !== b.dataset.tab));
+}));
+
+/* =====================================================
+   TAB 1 — system map
+   ===================================================== */
+const W=125, H=64, X=[20,185,350,515,680], Y1=70, Y2=205, Y3=340;
+const NODES = {
+  you_w:  {x:X[0],y:Y1,w:W,h:H,k:"w",t:"Your code",s:["writes"],
+    info:"Either <code>AsyncQuMixer</code> (<code>await</code>) or <code>QuMixer</code> (blocking). Both expose the same surface; the sync class is generated from the async one at import time, so the two cannot drift."},
+  facade: {x:X[1],y:Y1,w:W,h:H,k:"w",t:"Facade",s:["proxies · sync thread"],
+    info:"<code>qumixer_py/model/</code> — <code>mixer.input(6).fader</code> builds a throwaway <code>ParamProxy(mixer, ChannelId, \"fader\")</code>. <b>Invariant:</b> this layer holds zero protocol constants, only parameter <i>names</i>. The sync <code>QuMixer</code> runs an event loop in a daemon thread (<code>qumixer-py-loop</code>) and marshals each call with <code>run_coroutine_threadsafe</code>; cache reads happen directly on your thread."},
+  core_w: {x:X[2],y:Y1,w:W,h:H,k:"w",t:"AsyncQuMixer",s:["set() · mute()","encode()"],
+    info:"<code>client_async.py</code>. <code>set()</code> (line 827) validates, encodes, queues, then writes the cache optimistically. <code>encode()</code> (778) is public and pure — golden-vector tests and the CLI use it with no socket. <code>mute()</code> (699), <code>set_name()</code> (754), <code>recall_scene()</code> (882) have their own encodings. Everything outbound funnels through <code>_send()</code> (689)."},
+  queue:  {x:X[3],y:Y1,w:W,h:H,k:"w",t:"OutboundQueue",s:["ordered · 1000 B/s"],
+    info:"<code>transport/queue.py</code>. MIDI-over-TCP has no flow control into the console's parser, and it drops what it cannot parse <i>silently</i>. One worker drains a bounded queue (256) in issue order and sleeps so the average stays ≤ 1000 B/s (≈ DIN-MIDI). <code>send()</code> resolves once the bytes are written and drained. A 128-step fade can't flood the console."},
+  tcp_w:  {x:X[4],y:Y1,w:W,h:H,k:"w",t:"TcpTransport",s:["socket write"],
+    info:"<code>transport/tcp.py</code>. Three tasks per connection: <b>read</b>, <b>keepalive</b> (sends <code>FE</code> every 2 s), <b>liveness</b> (no inbound bytes for 10 s ⇒ link is dead, reconnect with backoff). The mixer allows <b>exactly one</b> TCP MIDI connection — Qu-Pad/Qu-Control holding it is the most common reason connect fails."},
+  mixer:  {x:845,y:Y1,w:125,h:334,k:"n",t:"Qu mixer",s:["TCP :51325","MIDI-on-TCP","unauthenticated"],
+    info:"Qu-16/24/32/Pac/SB. <b>One</b> TCP MIDI session at a time; no auth, no encryption — isolate the network. A complete fake (<code>qumixer_py/testing/fake_qu.py</code>, <code>python -m qumixer_py.testing.fake_qu</code>) speaks the same protocol, including surface moves and fault modes; the whole test-suite runs against it."},
+  reg:    {x:X[2],y:Y2,w:W,h:H,k:"n",t:"REGISTRY",s:["NRPN id ↔ name","vx · taper"],
+    info:"<code>protocol/registry.py</code> — the <b>only</b> place protocol constants live. Each <code>ParamSpec</code> has <code>name, nrpn_id, vx, domain, applies_to, direction</code>. Used forwards by <code>set()</code> (name → bytes) and backwards by <code>_ingest()</code> (bytes → name). <code>VX</code> is not a fine-value byte: it's either a filler constant or a real index (send target, GEQ band, FX tap)."},
+  ledger: {x:X[1],y:Y2,w:W,h:H,k:"n",t:"Echo ledger",s:["pending writes · 1 s"],
+    info:"<code>client_async.py</code> <code>_expect_echo()</code> (1137). Per <code>(channel, param, sub)</code> a FIFO of <code>(raw, deadline)</code>. Only the <i>front</i> entry is compared to an inbound value: a match is our echo (consume it); no match is somebody else (the operator). A write whose entry expires after <code>ECHO_WINDOW</code>=1 s downgrades the cache entry to <code>UNCONFIRMED</code> and fires <code>on_write_unconfirmed</code>."},
+  cache:  {x:X[1],y:Y3,w:W,h:H,k:"r",t:"StateCache",s:["+ EventBus","raw · freshness"],
+    info:"<code>state.py</code> + <code>events.py</code>. Keyed by <code>(channel, class, param, sub)</code>. Each value is <code>(raw, Freshness, updated_at)</code> with <code>Freshness</code> ∈ UNKNOWN / KNOWN / UNCONFIRMED / STALE. Every change emits a <code>ChangeEvent(old, new, source)</code>; callback exceptions are logged and never propagate; callbacks slower than 100 ms are warned about."},
+  you_r:  {x:X[0],y:Y3,w:W,h:H,k:"r",t:"Your code",s:["reads · on_change"],
+    info:"Reads (<code>ch.fader.raw</code>, <code>.db</code>, <code>mixer.get()</code>) are plain cache lookups — instant, no I/O. On a never-reported value they raise <code>ValueUnknownError</code> rather than returning a plausible default. Subscribe with <code>mixer.on_change(...)</code> and filter on <code>event.source</code>."},
+  ingest: {x:X[2],y:Y3,w:W,h:H,k:"r",t:"_ingest()",s:["resolve · classify · store"],
+    info:"<code>client_async.py:1050</code>. Resolve <code>(class, id, vx)</code> via the registry (unknown ⇒ debug-log and drop — undocumented params exist), clamp the value, compute the sub-index, then classify: echo ⇒ <b>LOCAL</b>; burst ⇒ <b>SYNC</b>; otherwise <b>MIXER</b>. See tab 3."},
+  decoder:{x:X[3],y:Y3,w:W,h:H,k:"r",t:"NrpnDecoder",s:["4 CCs → 1 update"],
+    info:"<code>midi/nrpn.py</code>. NRPN on a Qu is <code>63 CH · 62 ID · 06 VALUE · 26 VX</code>. The decoder emits on <code>06</code>, holds for at most one following CC (to pick up the <code>26</code>), and flushes on any non-CC message, 50 ms of silence, or the end-of-sync marker — otherwise the last parameter of a burst would be stranded."},
+  tcp_r:  {x:X[4],y:Y3,w:W,h:H,k:"r",t:"TcpTransport",s:["stream parser"],
+    info:"<code>MidiStreamParser</code> (<code>midi/parser.py</code>) turns the TCP byte stream into <code>MidiMessage</code> objects (CC, Note, Program Change, SysEx, realtime). The transport yields parsed messages, not bytes — a future USB transport would skip the parser. <code>read_loop</code> never dies on one bad message."},
+  meters: {x:X[3],y:Y2,w:W,h:H,k:"r",t:"MeterController",s:["bounded queue · pump"],
+    info:"<code>meters.py</code>. Sysex <code>13</code> frames are only <i>queued</i> on the read path (<code>put_nowait</code>, size 4, drop <b>oldest</b>); a separate pump task unpacks (7-in-8 bit packing) and decodes 7Q8 → dB. A slow consumer loses stale frames, never delays control traffic or the keepalive."}
+};
+const pt = {
+  L:(n,f=.5)=>[n.x, n.y+n.h*f], R:(n,f=.5)=>[n.x+n.w, n.y+n.h*f],
+  T:(n,f=.5)=>[n.x+n.w*f, n.y], B:(n,f=.5)=>[n.x+n.w*f, n.y+n.h]
+};
+const N = NODES;
+const EDGES = {
+  e_call:   {k:"w", p:[pt.R(N.you_w), pt.L(N.facade)], l:"call"},
+  e_set:    {k:"w", p:[pt.R(N.facade), pt.L(N.core_w,.3)], l:"set()"},
+  e_lookup: {k:"w", p:[pt.B(N.core_w,.25), pt.T(N.reg,.25)], l:"lookup", lp:[372,168], la:"end"},
+  e_send:   {k:"w", p:[pt.R(N.core_w), pt.L(N.queue)], l:"bytes"},
+  e_drain:  {k:"w", p:[pt.R(N.queue), pt.L(N.tcp_w)], l:"paced"},
+  e_wire:   {k:"w", p:[[805,102],[845,102]], l:"TCP", lp:[825,94]},
+  e_expect: {k:"w", p:[pt.L(N.core_w,.75),[330,118],[330,222],[310,222]], l:"expect", lp:[322,176], la:"end"},
+  e_lc:     {k:"w", p:[pt.B(N.ledger,.5), pt.T(N.cache,.5)], l:"LOCAL write", lp:[256,306], la:"start"},
+  e_prio:   {k:"p", p:[pt.T(N.core_w,.5),[412,42],[742,42],pt.T(N.tcp_w,.5)], l:"priority: meters on/off · bypasses queue", lp:[577,35]},
+  e_in:     {k:"r", p:[[845,372],[805,372]], l:"TCP", lp:[825,364]},
+  e_parse:  {k:"r", p:[pt.L(N.tcp_r), pt.R(N.decoder)], l:"msgs"},
+  e_quad:   {k:"r", p:[pt.L(N.decoder), pt.R(N.ingest)], l:"update"},
+  e_resolve:{k:"r", p:[pt.T(N.ingest,.75), pt.B(N.reg,.75)], l:"resolve", lp:[451,300], la:"start"},
+  e_consume:{k:"r", p:[[350,355],[338,355],[338,250],[310,250]], l:"echo?", lp:[340,300], la:"start"},
+  e_store:  {k:"r", p:[[350,380],[310,380]], l:"store", lp:[330,396]},
+  e_read:   {k:"r", p:[pt.L(N.cache), pt.R(N.you_r)], l:"get()", lp:[165,364]},
+  e_mfeed:  {k:"p", p:[[700,340],[700,237],[640,237]], l:"sysex 13", lp:[709,300], la:"start"},
+  e_mout:   {k:"p", p:[[515,250],[495,250],[495,322],[82,322],[82,340]], l:"frames via stream()", lp:[165,316]}
+};
+const svgMap = $("map");
+markers(svgMap);
+const edgeEls = {}, nodeEls = {};
+for (const id in EDGES){
+  const e = EDGES[id];
+  const g = el("g", {}, svgMap);
+  const d = "M" + e.p.map(q => q.join(",")).join(" L");
+  const path = el("path", {d, class:"edge k"+e.k, "marker-end":mk(svgMap,e.k)}, g);
+  const a = e.p[e.p.length-2], b = e.p[e.p.length-1];
+  const lp = e.lp || [(e.p[0][0]+e.p[1][0])/2, Math.min(e.p[0][1], e.p[1][1]) - 6];
+  el("text", {x:lp[0], y:lp[1], class:"elab k"+e.k, "text-anchor": e.la || "middle"}, g, e.l);
+  edgeEls[id] = path;
+}
+for (const id in NODES){
+  const n = NODES[id];
+  const g = el("g", {class:"node k"+n.k, tabindex:"0", role:"button", "aria-label":n.t+" — "+n.s.join(", ")}, svgMap);
+  el("rect", {x:n.x,y:n.y,width:n.w,height:n.h,rx:9}, g);
+  const cy = n.y + n.h/2;
+  const lines = n.s.length;
+  el("text", {x:n.x+n.w/2, y: id==="mixer" ? n.y+30 : cy-(lines>1?8:5), class:"t","text-anchor":"middle"}, g, n.t);
+  n.s.forEach((s,i)=> el("text", {x:n.x+n.w/2, y:(id==="mixer"? n.y+50 : cy+(lines>1?6:12))+i*13, class:"s","text-anchor":"middle"}, g, s));
+  g.addEventListener("click", () => showNode(id));
+  g.addEventListener("keydown", ev => { if (ev.key==="Enter"||ev.key===" "){ ev.preventDefault(); showNode(id);} });
+  nodeEls[id] = g;
+}
+el("text", {x:20, y:Y1-14, class:"s mut", "font-size":"11"}, svgMap, "WRITE PATH →");
+el("text", {x:20, y:Y3+H+22, class:"s mut", "font-size":"11"}, svgMap, "← READ PATH");
+function showNode(id){
+  const n = NODES[id];
+  $("ni-title").textContent = n.t + " — " + n.s.join(" · ");
+  $("ni-body").innerHTML = n.info; $("ni-body").style.color = "var(--ink)";
+}
+
+/* ---- scenarios ---- */
+const S = (hexstr, label, c) => ({h:hexstr, l:label, c});
+const SCEN = [
+{ id:"fader", name:"Set a fader  ·  ch.fader.set_db(-6)",
+  code:"ch = mixer.input(6)          # Input 6  → CH 0x25\nawait ch.fader.set_db(-6.0)  # was 0 dB (raw 98)",
+  steps:[
+  {t:"Resolve the strip", n:["you_w","facade","core_w"], e:["e_call","e_set"],
+   x:"<code>mixer.input(6)</code> returns a <code>ChannelId(0x25, INPUT)</code> (0x20 + 6 − 1). <code>.fader</code> creates a throwaway <code>ParamProxy</code> holding only the parameter <b>name</b> <code>\"fader\"</code>. <code>set_db(-6.0)</code> forwards to <code>mixer.set(ch, \"fader\", db=-6.0)</code>. With the sync <code>QuMixer</code> the same call is marshalled onto the loop thread and the caller blocks until it completes.",
+   cache:"fader  raw=98 (0 dB)  KNOWN", ledger:"(empty)", queue:"0 pending"},
+  {t:"Look up the parameter, convert dB → raw", n:["core_w","reg"], e:["e_lookup"],
+   x:"<code>REGISTRY.lookup(\"fader\", INPUT)</code> → <code>nrpn_id=0x17</code>, <code>vx=Fixed(0x07)</code>, <code>Interpolated(taper)</code>. The taper is piecewise-linear anchor points; −6 dB lies between <code>(0x3F, −10 dB)</code> and <code>(0x4F, −5 dB)</code>: 63 + 16 × (4/5) = 75.8 → <b>raw 76 = 0x4C</b>. It reads back as −5.94 dB, which is why <code>.raw</code> is the truth and <code>.db</code> a convenience. Also checked: parameter is writable, exists on this model, raw is in range.",
+   cache:"fader  raw=98  KNOWN", ledger:"(empty)", queue:"0 pending"},
+  {t:"Encode four control changes", n:["core_w"], e:[],
+   b:[S("B0 63 25","NRPN MSB = CH 0x25 (Input 6)",0),S("B0 62 17","NRPN LSB = param id 0x17 (fader)",1),S("B0 06 4C","Data MSB = value 76",2),S("B0 26 07","Data LSB = VX 0x07 — a filler here, not a fine value",3)],
+   x:"<code>encode_nrpn(N=0, ch=0x25, id=0x17, value=0x4C, vx=0x07)</code>. <code>B0</code> is a Control Change on MIDI channel N (the mixer's configured channel, learned during sync). The four CCs are always emitted in this documented order.",
+   cache:"fader  raw=98  KNOWN", ledger:"(empty)", queue:"0 pending"},
+  {t:"Queue and pace", n:["core_w","queue"], e:["e_send"],
+   x:"<code>_send()</code> is the single funnel for every control write. <code>OutboundQueue.send()</code> puts <code>(bytes, future)</code> on a bounded queue and awaits the future. One worker drains in issue order and sleeps so the average stays ≤ 1000 bytes/s — these 12 bytes cost ~12 ms. Without this a fade emitted in one event-loop tick would be silently dropped by the console's parser.",
+   cache:"fader  raw=98  KNOWN", ledger:"(empty)", queue:"1 pending → worker"},
+  {t:"Write to the socket — your await returns", n:["queue","tcp_w","mixer"], e:["e_drain","e_wire"],
+   x:"The worker hands the bytes to <code>TcpTransport.send()</code>; the future resolves once they are written and drained. <b>That is when <code>await set_db()</code> returns.</b> It means <i>sent</i>, not <i>applied</i> — nothing has confirmed yet. If the link is down and <code>auto_reconnect</code> is off you get <code>QuConnectionLostError</code> instead.",
+   cache:"fader  raw=98  KNOWN", ledger:"(empty)", queue:"0 pending"},
+  {t:"Optimistic local write + expectation", n:["core_w","ledger","cache"], e:["e_expect","e_lc"],
+   x:"Immediately after the send, <code>set()</code> writes the cache (<code>raw=76</code>, KNOWN) and emits a <code>ChangeEvent</code> with <b>source=LOCAL</b>. It also records <code>(76, now+1.0 s)</code> in the echo ledger under this exact key. This is registered <i>before</i> any echo can be processed, even if a resync is in flight, so the echo is always recognised as ours.",
+   cache:"fader  raw=76 (−5.9 dB)  KNOWN\nwas 98 · source=LOCAL", ledger:"fader: [(76, +1.0 s)]", queue:"0 pending"},
+  {t:"The mixer echoes the change", n:["mixer","tcp_r","decoder"], e:["e_in","e_parse"],
+   b:[S("B0 63 25","",0),S("B0 62 17","",1),S("B0 06 4C","",2),S("B0 26 07","",3)],
+   x:"The console re-emits the same four CCs. <code>MidiStreamParser</code> frames them; <code>NrpnDecoder</code> remembers <code>(ch, id)</code> per MIDI channel, <b>holds</b> the update when Data MSB (<code>06</code>) arrives, and releases it when the Data LSB (<code>26</code>, the VX) follows — or after one more CC / 50 ms of silence if VX never comes.",
+   cache:"fader  raw=76  KNOWN", ledger:"fader: [(76, +0.9 s)]", queue:"0 pending"},
+  {t:"Match the echo, consume the expectation", n:["decoder","ingest","reg","ledger","cache"], e:["e_quad","e_resolve","e_consume","e_store"],
+   x:"<code>_ingest()</code> resolves <code>(INPUT, 0x17, vx 0x07)</code> → <code>fader</code> through the same registry. The front of the ledger (76) equals the inbound value (76) ⇒ <b>consume it</b>, refresh the cache as KNOWN, tag <b>Source.LOCAL</b>, and emit <b>no</b> external-change event. A fader-follow script therefore never reacts to its own write.",
+   cache:"fader  raw=76  KNOWN\nsource=LOCAL (echo)", ledger:"fader: [ ]  consumed", queue:"0 pending"},
+  {t:"Alternate ending: no echo", n:["ledger","cache","you_r"], e:["e_read"], alt:true,
+   x:"If nothing matches within 1 s (<code>ECHO_WINDOW</code>), the entry expires: the cache value is downgraded to <b class=\"bad\">UNCONFIRMED</b> and <code>on_write_unconfirmed(ch, \"fader\", None)</code> fires. That is the library telling you it sent bytes into the void. Usual causes: wrong VX, parameter invalid for that channel class, console in Group mode. Reading the value still works; its freshness says what to trust.",
+   cache:"fader  raw=76  UNCONFIRMED", ledger:"fader: [ ]  expired", queue:"0 pending"}
+  ]},
+{ id:"send", name:"Set a send level  ·  ch.send(Mix.MIX3).set_level_db(-12)",
+  code:"await mixer.input(6).send(Mix.MIX3).set_level_db(-12.0)",
+  steps:[
+  {t:"A send carries its destination", n:["you_w","facade","core_w"], e:["e_call","e_set"],
+   x:"<code>.send(Mix.MIX3)</code> returns a <code>Send</code> proxy remembering the target. <code>set_level_db()</code> calls <code>mixer.set(ch, \"send_level\", db=−12.0, vx=Mix.MIX3)</code>. The extra <code>vx</code> argument is the only difference from a fader write.",
+   cache:"send_level[Mix 3]  raw=?  UNKNOWN", ledger:"(empty)", queue:"0 pending"},
+  {t:"Here VX is a destination, not a filler", n:["core_w","reg"], e:["e_lookup"],
+   x:"<code>send_level</code>: <code>nrpn_id=0x20</code>, <code>vx=SendTarget()</code>. The shared <code>SEND_TARGET_VX</code> table maps Mix 1–4 → 0x00–0x03, Mix 5-6/7-8/9-10 → 0x04–0x06, LR → 0x07, Groups → 0x08–0x0B, Matrices → 0x0C–0x0D. It is <b>sparse</b> (gap at 0x0E–0x0F). Mix 3 → <code>0x02</code>. −12 dB uses the same taper as the fader: 54 + 9 × (3/5) = 59.4 → <b>raw 59 = 0x3B</b>. Forgetting <code>vx</code> raises <code>ParameterRangeError</code> rather than guessing a destination.",
+   cache:"send_level[Mix 3]  raw=?  UNKNOWN", ledger:"(empty)", queue:"0 pending"},
+  {t:"Encode", n:["core_w"], e:[],
+   b:[S("B0 63 25","CH = Input 6",0),S("B0 62 20","ID = send_level",1),S("B0 06 3B","value = 59",2),S("B0 26 02","VX = Mix 3",3)],
+   x:"Same four-CC frame; the last CC now selects <i>which</i> send. Then queue → pace → socket exactly as in the fader walkthrough (<code>await</code> returns once written).",
+   cache:"send_level[Mix 3]  raw=?", ledger:"(empty)", queue:"1 pending → worker"},
+  {t:"Cache and ledger are per destination", n:["core_w","ledger","cache"], e:["e_expect","e_lc"],
+   x:"The cache key includes a <b>sub-index</b> derived from VX, so Input 6 → Mix 3 and Input 6 → Mix 4 are separate entries with separate expectations. The echo arrives as <code>(0x25, 0x20, 0x3B, vx 0x02)</code>, resolves to the same key, and consumes the entry. Guard rail: <code>mix_assign</code> to LR (<code>vx 0x07</code>) is rejected because it collides with <code>lr_assign</code>; use <code>set(ch, \"lr_assign\", …)</code>.",
+   cache:"send_level[Mix 3]  raw=59  KNOWN\nsource=LOCAL", ledger:"send_level[Mix 3]: [(59, +1.0 s)]", queue:"0 pending"}
+  ]},
+{ id:"mute", name:"Mute  ·  ch.mute(False)",
+  code:"await mixer.input(6).mute(False)   # unmute",
+  steps:[
+  {t:"Mute is a Note On, not an NRPN", n:["you_w","facade","core_w"], e:["e_call","e_set"],
+   x:"<code>BaseStrip.mute()</code> → <code>AsyncQuMixer.mute(ch, muted)</code>. This path never consults the registry: the Qu implements mute as MIDI notes, with the channel id as the note number.",
+   cache:"(mute is not tracked by this path)", ledger:"(none registered)", queue:"0 pending"},
+  {t:"Two Note Ons", n:["core_w"], e:[],
+   b:[S("90 25 3F","Note On · note = CH 0x25 · velocity 0x3F = unmute (0x7F = mute)",0),S("90 25 00","Note On velocity 0 = release",1)],
+   x:"Muting uses velocity <code>0x7F</code>, unmuting <code>0x3F</code>; the second message releases the note. <b>DCA masters</b> (0x10–0x13) and <b>mute-group masters</b> (0x50–0x53) are muted exactly the same way — firing a mute group has no dedicated message.",
+   cache:"—", ledger:"—", queue:"0 pending"},
+  {t:"Send like any other write", n:["core_w","queue","tcp_w","mixer"], e:["e_send","e_drain","e_wire"],
+   x:"Both messages go out as one payload through <code>_send()</code>, so they share the queue's ordering and pacing. Worth knowing: in this code path there's no optimistic cache write and no echo expectation; <code>mute()</code> simply sends. Use a surface-move subscription or <code>refresh()</code> if you need to observe the result.",
+   cache:"—", ledger:"—", queue:"1 pending → worker"}
+  ]},
+{ id:"name", name:"Rename  ·  mixer.set_name(ch, 'Kick')",
+  code:"await mixer.set_name(mixer.input(6).id, \"Kick\")",
+  steps:[
+  {t:"Validate before sending", n:["you_w","core_w"], e:["e_call","e_set"],
+   x:"<code>set_name()</code> checks the class can have a name and that the text is ≤ 6 characters (provisional, to be measured on hardware) of printable 7-bit ASCII. Anything else raises <code>ParameterRangeError</code> — the library will not let the console silently truncate, because a truncated name round-trips differently and would oscillate any mirroring app.",
+   cache:"name: 'Snare'", ledger:"—", queue:"0 pending"},
+  {t:"System-exclusive, command 03", n:["core_w"], e:[],
+   b:[S("F0 00 00 1A 50 11 01 00","Qu sysex prefix",5),S("00","MIDI ch N (7F = all-call)",1),S("03","cmd: set name",2),S("25","CH = Input 6",0),S("4B 69 63 6B","“Kick” (ASCII)",3),S("F7","end",5)],
+   x:"All Qu sysex shares an 8-byte prefix, then the channel byte, a command byte and a payload. Every payload byte must be 7-bit.",
+   cache:"name: 'Snare'", ledger:"—", queue:"1 pending → worker"},
+  {t:"No acknowledgement — optionally read back", n:["core_w","tcp_w","mixer","tcp_r"], e:["e_send","e_drain","e_wire","e_in"],
+   x:"The console does not ack a name write. With <code>verify_name_writes=True</code> the client sends <code>01</code> (get name) and compares the <code>02</code> reply (NUL-padded to 7 bytes) with what it set, raising if they differ. Name replies are routed through <code>_on_sysex</code> to a waiting future — they bypass the NRPN decoder and <code>_ingest</code> entirely.",
+   cache:"name: 'Kick' (after read-back)", ledger:"—", queue:"0 pending"}
+  ]},
+{ id:"scene", name:"Recall a scene  ·  mixer.recall_scene(12)",
+  code:"await mixer.recall_scene(12)   # 1-based, as shown on the console",
+  steps:[
+  {t:"Bank select, then program change", n:["core_w","queue","tcp_w","mixer"], e:["e_send","e_drain","e_wire"],
+   b:[S("B0 00 00","Bank Select MSB = 0",0),S("B0 20 00","Bank Select LSB = 0",1),S("C0 0B","Program Change = scene 12 − 1",2)],
+   x:"The Qu ignores a Program Change unless Bank 1 is selected, so the bank select is sent <b>immediately before every recall</b>, never once up front. Scenes are 1–100 as displayed; the wire value is 0-based.",
+   cache:"all values KNOWN", ledger:"(maybe some)", queue:"1 pending → worker"},
+  {t:"Distrust everything you knew", n:["ledger","cache"], e:[],
+   x:"A scene changes hundreds of parameters and the console does not promise to echo them. So: <code>cache.mark_all_stale()</code>, the echo ledger is cleared, names are forgotten, any surface map is invalidated, and <code>on_scene_recalled(12)</code> fires. The cache is now a list of “what we <i>used</i> to believe”.",
+   cache:"every value → STALE", ledger:"cleared", queue:"0 pending"},
+  {t:"Wait 500 ms, then ask for everything again", n:["core_w","queue","tcp_w","mixer"], e:["e_send","e_drain","e_wire"],
+   x:"Program Change is unacknowledged and there is no “recall finished” message, so <code>scene_settle_delay</code> (0.5 s) is a heuristic, not a guarantee — a big scene may need longer. Then <code>resync()</code> sends the same all-call get-system-state request as at connect (see tab 2).",
+   cache:"every value STALE", ledger:"empty", queue:"1 pending → worker"},
+  {t:"The state burst refills the cache", n:["mixer","tcp_r","decoder","ingest","cache"], e:["e_in","e_parse","e_quad","e_store"],
+   x:"The mixer pushes every parameter. Each is ingested with <b>Source.SYNC</b> (no external-change events), the sysex <code>14</code> end-marker flushes the last held update, names are re-swept, and only then is <code>SyncComplete</code> emitted — values <i>and</i> names are trustworthy again.",
+   cache:"every value → KNOWN\nsource=SYNC", ledger:"empty", queue:"0 pending"}
+  ]},
+{ id:"surface", name:"Operator moves a fader  ·  inbound only",
+  code:"mixer.on_change(lambda ev: print(ev.channel.label, ev.param, ev.new.raw, ev.source))\n# someone drags Input 6 up to 0 dB on the console",
+  steps:[
+  {t:"Console speaks first", n:["mixer","tcp_r"], e:["e_in"],
+   b:[S("B0 63 25","",0),S("B0 62 17","",1),S("B0 06 62","value = 98 (0 dB)",2),S("B0 26 07","",3)],
+   x:"A move on the surface is reported with the very same four CCs the library uses to write. Nothing was requested; this is unsolicited traffic.",
+   cache:"fader  raw=76  KNOWN", ledger:"(empty)", queue:"0 pending"},
+  {t:"Decode", n:["tcp_r","decoder"], e:["e_parse","e_quad"],
+   x:"Framing and NRPN assembly, as before. One detail: MIDI-strip traffic arrives on MIDI channel N+1, a separate namespace; <code>_dispatch()</code> routes it to strip subscribers <i>before</i> it can reach the decoder, so it can never force-flush an in-flight update.",
+   cache:"fader  raw=76", ledger:"(empty)", queue:"0 pending"},
+  {t:"Classify: not an echo, not a sync", n:["decoder","ingest","reg","ledger","cache"], e:["e_quad","e_resolve","e_consume","e_store"],
+   x:"The ledger has nothing for this key, so it's not our echo; no sync burst is running; therefore <b>Source.MIXER</b>. The cache is updated KNOWN with <code>raw=98</code>.",
+   cache:"fader  raw=98 (0 dB)  KNOWN\nsource=MIXER", ledger:"(empty)", queue:"0 pending"},
+  {t:"Deliver to your callbacks", n:["cache","you_r"], e:["e_read"],
+   x:"<code>ChangeEvent(channel, param, sub, old, new, source=MIXER)</code> is dispatched to <code>on_change</code> subscribers. Exceptions in your callback are logged, never raised into the read loop; callbacks slower than 100 ms trigger a warning. <code>examples/fader_follow.py</code> uses exactly this to mirror one channel onto another.",
+   cache:"fader  raw=98  KNOWN", ledger:"(empty)", queue:"0 pending"}
+  ]},
+{ id:"meters", name:"Live meters  ·  mixer.meters.enabled() / stream()",
+  code:"async with mixer.meters.enabled():\n    async for frame in mixer.meters.stream():\n        print(frame.db(slot))",
+  steps:[
+  {t:"Enable: a priority sysex", n:["you_w","facade","core_w","tcp_w","mixer"], e:["e_call","e_set","e_prio","e_wire"],
+   b:[S("F0 00 00 1A 50 11 01 00","prefix",5),S("00","MIDI ch",1),S("12","cmd: meters",2),S("01","on",3),S("F7","",5)],
+   x:"Meter on/off bypasses the outbound queue and throttle (<code>send_priority</code>): liveness and metering control must never starve behind a bulk write. <code>enabled()</code> is reference-counted, so nested blocks are safe, and a reconnect replays the same count.",
+   cache:"—", ledger:"—", queue:"bypassed"},
+  {t:"Frames arrive; read path only queues", n:["mixer","tcp_r","meters"], e:["e_in","e_mfeed"],
+   x:"The mixer streams sysex <code>13</code> frames continuously. <code>_on_sysex</code> hands the raw payload to <code>meters.feed()</code>, which does a non-blocking <code>put_nowait</code> into a queue of <b>4</b>. When full it drops the <b>oldest</b> frame: a stale meter has no value, and control traffic and the keepalive must never wait on decoding.",
+   cache:"—", ledger:"—", queue:"meter queue ≤ 4"},
+  {t:"Pump: unpack, decode, deliver", n:["meters","you_r"], e:["e_mout"],
+   x:"A separate pump task un-packs the 7-in-8 encoding (a leading byte carries the high bits of the next seven; <b>bit 6 belongs to the first</b> — reversed order yields plausible garbage), reads 16-bit values and converts <code>dB = (raw − 0x8000) / 256</code>, <i>unclamped</i> so a layout error shows up as an absurd reading rather than being hidden. A wrong-sized frame force-disables metering and fires <code>on_meter_layout_error</code>. <code>stream()</code> consumers that fall behind lose the oldest frame too.",
+   cache:"—", ledger:"—", queue:"stream queue drops oldest"}
+  ]}
+];
+let cur = 0, si = -1;
+const scn = $("scn");
+SCEN.forEach((s,i)=> h("option",{value:i},scn).textContent = s.name);
+function overview(){
+  Object.values(nodeEls).forEach(n => n.classList.remove("on","dim"));
+  Object.values(edgeEls).forEach(n => n.classList.remove("on","dim"));
+}
+function renderStep(){
+  const sc = SCEN[cur];
+  $("code").textContent = sc.code;
+  const dots = $("dots"); dots.innerHTML = "";
+  sc.steps.forEach((_,i)=>{
+    const d = h("button",{class:"dot"+(i===si?" on":(i<si?" done":"")),"aria-label":"Step "+(i+1)},dots);
+    d.addEventListener("click",()=>{si=i;renderStep();});
+  });
+  $("prev").disabled = si < 0; $("next").disabled = si >= sc.steps.length-1;
+  const sb = $("sbytes"); sb.innerHTML = "";
+  if (si < 0){
+    overview();
+    $("stitle").textContent = "Overview"; $("sno").textContent = "";
+    $("stext").innerHTML = "Press <b>Next →</b> (or the right-arrow key) to follow this call through the system. The boxes and arrows it touches light up; the three cards show what the library believes at that moment.";
+    $("i-cache").textContent = $("i-ledger").textContent = $("i-queue").textContent = "—";
+    return;
+  }
+  const st = sc.steps[si];
+  $("stitle").textContent = st.t; $("sno").textContent = "step "+(si+1)+" / "+sc.steps.length + (st.alt ? " · alternate ending" : "");
+  $("stext").innerHTML = st.x;
+  (st.b||[]).forEach(b => { const d = h("div",{class:"blk s"+b.c},sb); h("b",{},d).textContent = b.h; if (b.l) h("span",{},d).textContent = b.l; });
+  $("i-cache").textContent = st.cache; $("i-ledger").textContent = st.ledger; $("i-queue").textContent = st.queue;
+  for (const id in nodeEls){ const on = st.n.includes(id); nodeEls[id].classList.toggle("on", on); nodeEls[id].classList.toggle("dim", !on); }
+  for (const id in edgeEls){ const on = st.e.includes(id); edgeEls[id].classList.toggle("on", on); edgeEls[id].classList.toggle("dim", !on); }
+}
+scn.addEventListener("change", ()=>{cur=+scn.value; si=-1; renderStep();});
+$("prev").addEventListener("click",()=>{ if(si>=0){si--;renderStep();} });
+$("next").addEventListener("click",()=>{ if(si<SCEN[cur].steps.length-1){si++;renderStep();} });
+$("reset").addEventListener("click",()=>{si=-1;renderStep();});
+document.addEventListener("keydown",ev=>{
+  if ($("tab-map").hidden || /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) return;
+  if (ev.key==="ArrowRight") $("next").click(); else if (ev.key==="ArrowLeft") $("prev").click();
+});
+renderStep();
+
+/* =====================================================
+   TAB 2 — states + ladder
+   ===================================================== */
+const STATE_POS = {DISCONNECTED:[20,16],CONNECTING:[210,16],CONNECTED:[400,16],SYNCING:[590,16],READY:[780,16],RECONNECTING:[590,92]};
+const svgSt = $("states"); markers(svgSt);
+const stEls = {};
+for (const k in STATE_POS){
+  const [x,y] = STATE_POS[k];
+  const g = el("g",{class:"st"},svgSt);
+  el("rect",{x,y,width:150,height:42,rx:8},g);
+  el("text",{x:x+75,y:y+26,"text-anchor":"middle","font-size":"13","font-weight":"600"},g,k);
+  stEls[k] = g;
+}
+function arrow(svg,pts,label,lp,kind="w",anc="middle"){
+  el("path",{d:"M"+pts.map(p=>p.join(",")).join(" L"),class:"edge k"+kind,"marker-end":mk(svg,kind)},svg);
+  if (label) el("text",{x:lp[0],y:lp[1],class:"elab k"+kind,"text-anchor":anc},svg,label);
+}
+arrow(svgSt,[[170,37],[210,37]]); arrow(svgSt,[[360,37],[400,37]]); arrow(svgSt,[[550,37],[590,37]]); arrow(svgSt,[[740,37],[780,37]]);
+arrow(svgSt,[[855,58],[855,113],[740,113]],"link dead",[800,128],"p");
+arrow(svgSt,[[665,92],[665,58]],"reconnected → re-sync",[675,80],"w","start");
+el("text",{x:20,y:92,class:"mut","font-size":"12"},svgSt,"connect() → TCP up → send 10 → 11 + burst + 14 → READY");
+el("text",{x:20,y:110,class:"mut","font-size":"12"},svgSt,"wait_synced() returns after the name sweep, once SyncComplete has fired");
+
+const LADDER = {
+happy:[
+ {s:"CONNECTING",d:"→",l:"TCP connect :51325",t:"Open the socket",
+  x:"<code>connect_timeout</code> = 5 s. Failure raises <code>QuConnectionError</code> with the hint every user needs once: <b>the Qu permits exactly one TCP MIDI connection</b>; close Qu-Pad / Qu-Control / other scripts. On success three tasks start: read, keepalive, liveness."},
+ {s:"SYNCING",d:"→",l:"F0 … 7F 10 01 F7  get system state",t:"Ask who you are",
+  b:[S("F0 00 00 1A 50 11 01 00","prefix",5),S("7F","ALL-CALL: channel unknown yet",4),S("10","cmd: get state",2),S("01","iPadFlag=1",3),S("F7","",5)],
+  x:"The all-call form (<code>7F</code>) is the only possible one because the mixer's MIDI channel N isn't known until it replies. <code>iPadFlag=1</code> asks the console to expect a keepalive within 5 s — which is why the client sends <code>FE</code> every 2 s."},
+ {s:"SYNCING",d:"←",l:"11  BoxID · firmware major · minor",t:"Learn N, model, firmware",
+  x:"Reply must arrive within <code>reply_timeout</code> = 5 s, otherwise <code>QuConnectionError</code> (“not a Qu?”). From BoxID the client derives the model and its capabilities (channel counts), from the reply's channel byte the MIDI channel N, and logs a warning for firmware older than 1.9 (what the registry was transcribed against). Writes issued while this is in flight wait here instead of failing."},
+ {s:"SYNCING",d:"←",l:"NRPN burst: every parameter",t:"State push",
+  x:"Hundreds of NRPN quads. Each goes through the normal decoder and <code>_ingest()</code>, tagged <b>Source.SYNC</b> and emitting no external-change events, so a monitor isn't spammed on connect. The decoder holds the final update until something flushes it."},
+ {s:"SYNCING",d:"←",l:"14  end of sync",t:"The burst is over",
+  x:"The end marker is a non-CC message, which itself flushes the decoder's held update (otherwise the last parameter is stranded and the cache is one value short). <code>sync_timeout</code> = 15 s: no marker ⇒ <code>SyncTimeoutError</code>, unless <code>partial_sync_ok=True</code>, which keeps what arrived and proceeds."},
+ {s:"READY",d:"→",l:"01  get name × N (20 ms apart)",t:"Name sweep",
+  x:"State is READY, but names are not part of the push, so each channel is asked individually, paced 20 ms apart and kept out of the burst window so that unrelated surface moves are reported normally. 0.5 s timeout per request, 2 retries."},
+ {s:"READY",d:"←",l:"02  name replies (NUL-padded to 7)",t:"Names arrive",
+  x:"Replies are routed to waiting futures; trailing NULs are stripped, non-printable bytes become “?” with a warning. When the sweep ends: <code>wait_synced()</code> unblocks and <code>SyncComplete</code> fires — the signal that values <i>and</i> names are trustworthy."},
+ {s:"READY",d:"↔",l:"FE keepalive · every 2 s",t:"Steady state",
+  x:"Unconditional Active Sensing every 2 s, safe under both keepalive regimes. Inbound <code>FE</code> is swallowed (not forwarded to your code) unless <code>forward_active_sense=True</code>. Any inbound byte resets the 10 s liveness clock."}
+],
+drop:[
+ {s:"READY",d:"↔",l:"normal traffic",t:"Everything working",x:"Writes flowing, echoes arriving, keepalive both ways."},
+ {s:"READY",d:"x",l:"no inbound bytes for 10 s",t:"Declare the link dead yourself",
+  x:"The liveness task checks every <code>inbound_timeout / 4</code> = 2.5 s. If nothing at all has arrived for <code>inbound_timeout</code> = 10 s, the transport declares the link dead rather than waiting for the OS to notice a half-open TCP connection."},
+ {s:"RECONNECTING",d:"n",l:"cache → STALE · queue cleared · decoder reset · ledger cleared",t:"Distrust, drop, reset",
+  x:"On entering RECONNECTING/DISCONNECTED: the <b>entire</b> cache is marked STALE (pre-disconnect values are never served as current), the outbound backlog is dropped — waiting <code>await</code>s are cancelled — the NRPN decoder state is reset and expectations are cleared (else the first post-reconnect surface move could be misread as an echo)."},
+ {s:"RECONNECTING",d:"→",l:"TCP retry: 0.5 s → 30 s (×2, ±20 % jitter)",t:"Exponential backoff",
+  x:"Reconnect uses jittered exponential backoff (min 0.5 s, max 30 s, factor 2). <code>max_reconnect_attempts</code> can cap it; <code>auto_reconnect=False</code> turns it off, and then writes raise <code>QuConnectionLostError</code>. An explicit <code>close()</code> sets a flag first so no in-flight attempt can resurrect the connection."},
+ {s:"SYNCING",d:"↔",l:"10 / 11 / burst / 14  (re-sync)",t:"Learn everything again",
+  x:"Before READY the reconnect hook re-learns N, BoxID and firmware — the operator may have changed the MIDI channel, or this IP may now be a different console. If the <b>BoxID changed</b>, the cache and names are cleared entirely and a second sync runs: keys for a different model are never reused."},
+ {s:"READY",d:"→",l:"12 01  re-enable meters (same count)",t:"Meters come back",
+  x:"If metering was enabled before the drop, the enable count is preserved (an N-deep nesting of <code>enabled()</code> blocks) and replayed. Then READY, <code>SyncComplete</code>, and <code>on_connection_state</code> subscribers see the transition."}
+]};
+let lpath="happy", lsel=0;
+const svgL = $("ladder");
+function renderLadder(){
+  svgL.innerHTML = ""; markers(svgL);
+  const msgs = LADDER[lpath], rowH = 66, y0 = 70, cx = 300, mx = 760;
+  svgL.setAttribute("viewBox","0 0 990 "+(y0+msgs.length*rowH+20));
+  el("rect",{x:cx-80,y:8,width:160,height:34,rx:8,fill:"none",stroke:"var(--w)","stroke-width":1.5},svgL);
+  el("text",{x:cx,y:30,"text-anchor":"middle","font-weight":"600","font-size":"13"},svgL,"qumixer-py client");
+  el("rect",{x:mx-80,y:8,width:160,height:34,rx:8,fill:"none",stroke:"var(--muted)","stroke-width":1.5},svgL);
+  el("text",{x:mx,y:30,"text-anchor":"middle","font-weight":"600","font-size":"13"},svgL,"Qu mixer");
+  const bot = y0+msgs.length*rowH;
+  el("line",{x1:cx,y1:42,x2:cx,y2:bot,stroke:"var(--line)","stroke-width":2,"stroke-dasharray":"4 4"},svgL);
+  el("line",{x1:mx,y1:42,x2:mx,y2:bot,stroke:"var(--line)","stroke-width":2,"stroke-dasharray":"4 4"},svgL);
+  msgs.forEach((m,i)=>{
+    const y = y0 + i*rowH + 22;
+    const g = el("g",{class:"msg"+(i===lsel?" on":""),tabindex:"0",role:"button","aria-label":m.t+": "+m.l},svgL);
+    el("rect",{class:"hit",x:4,y:y-30,width:982,height:rowH-4,rx:8},g);
+    el("text",{x:16,y:y+4,class:"mut","font-size":"11","font-family":"monospace"},g,m.s);
+    const k = m.d==="←" ? "r" : (m.d==="x"||m.d==="n" ? "p":"w");
+    if (m.d==="→"||m.d==="←"){
+      const pts = m.d==="→" ? [[cx,y],[mx-2,y]] : [[mx,y],[cx+2,y]];
+      el("path",{d:"M"+pts.map(p=>p.join(",")).join(" L"),class:"edge k"+k,"marker-end":mk(svgL,k)},g);
+    } else if (m.d==="↔"){
+      el("path",{d:"M"+cx+","+y+" L"+(mx-2)+","+y,class:"edge kw","marker-end":mk(svgL,"w")},g);
+      el("path",{d:"M"+mx+","+(y+9)+" L"+(cx+2)+","+(y+9),class:"edge kr","marker-end":mk(svgL,"r")},g);
+    } else if (m.d==="x"){
+      el("path",{d:"M"+mx+","+y+" L"+(mx-60)+","+y,class:"edge kp"},g);
+      el("text",{x:mx-72,y:y+5,"font-size":"16",fill:"var(--bad)",style:"fill:var(--bad)","text-anchor":"middle"},g,"✕");
+    } else {
+      el("rect",{x:cx-6,y:y-12,width:520,height:24,rx:6,fill:"none",stroke:"var(--p)","stroke-dasharray":"4 3"},g);
+    }
+    const tx = m.d==="n" ? cx+10 : (cx+mx)/2;
+    el("text",{x:tx,y:y-(m.d==="n"?0:8)+(m.d==="n"?5:0),class:"",
+      "text-anchor":m.d==="n"?"start":"middle","font-size":"12",style:"font-family:var(--mono)"},g,m.l);
+    const act = () => { lsel=i; renderLadder(); showLadder(); };
+    g.addEventListener("click",act);
+    g.addEventListener("keydown",ev=>{if(ev.key==="Enter"||ev.key===" "){ev.preventDefault();act();}});
+  });
+  showLadder();
+}
+function showLadder(){
+  const m = LADDER[lpath][lsel];
+  Object.entries(stEls).forEach(([k,g])=>g.classList.toggle("on",k===m.s));
+  const d = $("ladder-detail"); d.innerHTML = "";
+  h("h2",{},d).textContent = m.t;
+  if (m.b){ const bb = h("div",{class:"bytes"},d); m.b.forEach(b=>{const x=h("div",{class:"blk s"+b.c},bb);h("b",{},x).textContent=b.h;h("span",{},x).textContent=b.l;}); }
+  h("div",{},d,m.x);
+}
+document.querySelectorAll("[data-path]").forEach(b=>b.addEventListener("click",()=>{
+  lpath=b.dataset.path; lsel=0;
+  document.querySelectorAll("[data-path]").forEach(x=>x.classList.toggle("on",x===b));
+  renderLadder();
+}));
+renderLadder();
+
+/* =====================================================
+   TAB 3 — inbound classification flow + freshness
+   ===================================================== */
+const FC = {
+  start:{x:20, y:10, w:250,h:48,t:"Inbound NRPN update",s:"(CH, ID, VALUE, VX)",k:""},
+  q1:{x:20, y:90, w:250,h:48,t:"On the mixer's MIDI channel N?",s:"strip traffic is on N+1",k:""},
+  q2:{x:20, y:170,w:250,h:48,t:"Registry knows (class, ID, VX)?",s:"",k:""},
+  q3:{x:20, y:250,w:250,h:48,t:"Front of echo ledger == value?",s:"FIFO, one echo per entry",k:""},
+  q4:{x:20, y:330,w:250,h:48,t:"Sync burst in progress?",s:"",k:""},
+  q5:{x:20, y:410,w:250,h:48,t:"Own write pending on this key?",s:"",k:""},
+  o_strip:{x:420,y:90, w:300,h:48,t:"Strip subscribers only",s:"never touches the cache",k:"out"},
+  o_drop:{x:420,y:170,w:300,h:48,t:"Dropped (debug log)",s:"undocumented params exist; never raises",k:"bad"},
+  o_local:{x:420,y:250,w:300,h:48,t:"Source.LOCAL",s:"consume entry · cache KNOWN · no external event",k:"out"},
+  o_mixer:{x:420,y:330,w:300,h:48,t:"Source.MIXER",s:"cache KNOWN · emit external change",k:"out"},
+  o_sync:{x:420,y:410,w:300,h:48,t:"Source.SYNC",s:"cache KNOWN · no external event",k:"out"},
+  o_skip:{x:750,y:410,w:225,h:48,t:"Skip value",s:"stale snapshot, keep the newer write",k:"bad"}
+};
+const FE = [ // from,to,label,fromPt,toPt, path
+  ["start","q1","",[[145,58],[145,90]]],
+  ["q1","q2","yes",[[145,138],[145,170]]],
+  ["q1","o_strip","no",[[270,114],[420,114]]],
+  ["q2","q3","yes",[[145,218],[145,250]]],
+  ["q2","o_drop","no",[[270,194],[420,194]]],
+  ["q3","q4","no",[[145,298],[145,330]]],
+  ["q3","o_local","yes",[[270,274],[420,274]]],
+  ["q4","q5","yes",[[145,378],[145,410]]],
+  ["q4","o_mixer","no",[[270,354],[420,354]]],
+  ["q5","o_sync","no",[[270,434],[420,434]]],
+  ["q5","o_skip","yes",[[145,458],[145,484],[862,484],[862,458]],[160,478]]
+];
+const svgF = $("flow"); markers(svgF);
+const fcE = {}, fcN = {};
+FE.forEach(([a,b,l,p,ulp])=>{
+  const path = el("path",{d:"M"+p.map(q=>q.join(",")).join(" L"),class:"fcedge","marker-end":mk(svgF,"w")},svgF);
+  fcE[a+">"+b]=path;
+  if (l){ const m=p[0]; const lx = p.length===2 && p[0][0]===p[1][0] ? m[0]+14 : (p[0][0]+p[1][0])/2; const ly = p.length===2 && p[0][0]===p[1][0] ? (p[0][1]+p[1][1])/2+4 : m[1]-6;
+    el("text",{x:ulp?ulp[0]:lx,y:ulp?ulp[1]:ly,"text-anchor":ulp?"start":"middle","font-size":"11",class:"mut"},svgF,l); }
+});
+for (const id in FC){
+  const n = FC[id], g = el("g",{class:"fc "+n.k},svgF);
+  el("rect",{x:n.x,y:n.y,width:n.w,height:n.h,rx:8},g);
+  el("text",{x:n.x+n.w/2,y:n.y+(n.s?20:29),"text-anchor":"middle","font-size":"12.5","font-weight":"600"},g,n.t);
+  if (n.s) el("text",{x:n.x+n.w/2,y:n.y+37,"text-anchor":"middle","font-size":"10.5",class:"mut"},g,n.s);
+  fcN[id]=g;
+}
+const CASES = [
+ {n:"Echo of my own write", path:["start","q1","q2","q3","o_local"], x:"You wrote fader=76 a moment ago; the console repeats it. The ledger front is 76 ⇒ <b>LOCAL</b>. No event reaches “external change” subscribers, so mirroring scripts stay quiet."},
+ {n:"Operator moves a fader", path:["start","q1","q2","q3","q4","o_mixer"], x:"No ledger entry, no sync running ⇒ <b>MIXER</b>. This is the only source that represents the physical world changing under you."},
+ {n:"State burst after connect", path:["start","q1","q2","q3","q4","q5","o_sync"], x:"During a (re)sync every update is <b>SYNC</b>: the cache fills, but nobody is told “Input 6 changed” 300 times."},
+ {n:"Burst value for a key I just wrote", path:["start","q1","q2","q3","q4","q5","o_skip"], x:"A resync's snapshot may predate your write. Applying it would silently revert your fresher value with the console's pre-write state, so it is skipped; your write's own echo (or its expiry) is authoritative for that key."},
+ {n:"Undocumented parameter", path:["start","q1","q2","o_drop"], x:"Unrecognised (CH, ID) pairs are dropped with a debug log — never an exception, because undocumented parameters exist and inbound data must not crash the read loop."},
+ {n:"MIDI-strip traffic (N+1)", path:["start","q1","o_strip"], x:"Strip moves live in a different MIDI channel namespace. They are diverted <i>before</i> the NRPN decoder so they can neither pollute channel N's cache nor force-flush an in-flight update."}
+];
+function showCase(i){
+  const c = CASES[i];
+  document.querySelectorAll("#cases .btn").forEach((b,j)=>b.classList.toggle("on",i===j));
+  for (const id in fcN) fcN[id].classList.toggle("on", c.path.includes(id));
+  for (const k in fcE) { const [a,b]=k.split(">"); const ia=c.path.indexOf(a), ib=c.path.indexOf(b); fcE[k].classList.toggle("on", ia>=0 && ib===ia+1); }
+  $("case-text").innerHTML = c.x;
+}
+CASES.forEach((c,i)=>{ const b=h("button",{class:"btn"},$("cases")); b.textContent=c.n; b.addEventListener("click",()=>showCase(i)); });
+showCase(0);
+
+const svgFr = $("fresh"); markers(svgFr);
+const FR = {UNKNOWN:[20,90],KNOWN:[270,90],UNCONFIRMED:[560,20],STALE:[560,160]};
+for (const k in FR){
+  const [x,y]=FR[k]; const g = el("g",{class:"st"},svgFr);
+  el("rect",{x,y,width:200,height:48,rx:8},g);
+  el("text",{x:x+100,y:y+29,"text-anchor":"middle","font-weight":"600","font-size":"13"},g,k);
+}
+arrow(svgFr,[[220,114],[270,114]],"reported",[245,106],"r");
+arrow(svgFr,[[470,100],[515,100],[515,44],[560,44]],"no echo in 1 s",[455,72],"p");
+arrow(svgFr,[[470,128],[515,128],[515,184],[560,184]],"disconnect · scene",[455,168],"p");
+arrow(svgFr,[[660,68],[660,160]],"disconnect / scene",[760,118],"p");
+arrow(svgFr,[[560,196],[370,196],[370,138]],"resync → KNOWN again",[470,214],"r");
+</script>
+<script>
+/* =====================================================
+   TAB 4 — byte lab
+   ===================================================== */
+const CLS = {
+  input:{lbl:"Input",base:0x20,max:32,fmt:n=>"Input "+n},
+  st:{lbl:"Stereo input",base:0x40,max:3,fmt:n=>"ST"+n},
+  fxr:{lbl:"FX return",base:0x08,max:4,fmt:n=>"FX Return "+n},
+  dca:{lbl:"DCA",base:0x10,max:4,fmt:n=>"DCA "+n},
+  mix:{lbl:"Mix (1–4)",base:0x60,max:4,fmt:n=>"Mix "+n}
+};
+const TARGETS = [["Mix 1",0],["Mix 2",1],["Mix 3",2],["Mix 4",3],["Mix 5-6",4],["Mix 7-8",5],["Mix 9-10",6],["LR",7],["Group 1-2",8],["Group 3-4",9],["Group 5-6",10],["Group 7-8",11],["Matrix 1-2",12],["Matrix 3-4",13]];
+const TAPER = [[0x0C,-45],[0x10,-40],[0x17,-35],[0x1F,-30],[0x27,-25],[0x2F,-20],[0x36,-15],[0x3F,-10],[0x4F,-5],[0x62,0],[0x72,5],[0x7F,10]];
+function dbToRaw(v){
+  if (v < TAPER[0][1]) return 0;
+  if (v >= TAPER[TAPER.length-1][1]) return TAPER[TAPER.length-1][0];
+  for (let i=0;i<TAPER.length-1;i++){
+    const [r0,v0]=TAPER[i],[r1,v1]=TAPER[i+1];
+    if (v>=v0 && v<=v1) return Math.round(r0+(r1-r0)*(v-v0)/(v1-v0));
+  }
+  return 127;
+}
+function rawToDb(r){
+  if (r===0) return -Infinity;
+  if (r<TAPER[0][0]){ const s=(TAPER[1][1]-TAPER[0][1])/(TAPER[1][0]-TAPER[0][0]); return Math.max(-60, TAPER[0][1]+s*(r-TAPER[0][0])); }
+  if (r>=TAPER[TAPER.length-1][0]) return TAPER[TAPER.length-1][1];
+  for (let i=0;i<TAPER.length-1;i++){
+    const [r0,v0]=TAPER[i],[r1,v1]=TAPER[i+1];
+    if (r>=r0 && r<=r1) return v0+(v1-v0)*(r-r0)/(r1-r0);
+  }
+  return NaN;
+}
+const fmtDb = v => v===-Infinity ? "−∞ dB" : (v>0?"+":"")+v.toFixed(1).replace("-","−")+" dB";
+const lc = $("l-cls"), lt = $("l-tgt"), lm = $("l-mc");
+Object.entries(CLS).forEach(([k,v])=>h("option",{value:k},lc).textContent=v.lbl);
+TARGETS.forEach(([n,v],i)=>{ const o=h("option",{value:v},lt); o.textContent=n; if(v===2) o.selected=true; });
+for (let i=1;i<=16;i++) h("option",{value:i-1},lm).textContent=i;
+const svgT = $("taper");
+function drawTaper(raw){
+  svgT.innerHTML="";
+  const x = r => 40 + r*(540/127), y = d => 12 + (10-d)*(200/70);
+  [-60,-40,-20,0,10].forEach(d=>{ el("line",{x1:40,x2:580,y1:y(d),y2:y(d),stroke:"var(--line)","stroke-width":1},svgT); el("text",{x:34,y:y(d)+4,"text-anchor":"end","font-size":"10.5",class:"mut"},svgT,d); });
+  [0,32,64,96,127].forEach(r=>{ el("text",{x:x(r),y:230,"text-anchor":"middle","font-size":"10.5",class:"mut"},svgT,"0x"+hex(r)); });
+  el("path",{d:"M"+x(1)+","+y(-58.75)+" L"+x(0x0C)+","+y(-45),fill:"none",stroke:"var(--muted)","stroke-dasharray":"3 3","stroke-width":1.5},svgT);
+  el("path",{d:"M"+TAPER.map(([r,v])=>x(r)+","+y(v)).join(" L"),fill:"none",stroke:"var(--w)","stroke-width":2},svgT);
+  TAPER.forEach(([r,v])=>el("circle",{cx:x(r),cy:y(v),r:2.5,fill:"var(--w)"},svgT));
+  const d = rawToDb(raw);
+  if (isFinite(d)){ el("line",{x1:x(raw),x2:x(raw),y1:y(d),y2:212,stroke:"var(--bad)","stroke-dasharray":"3 3"},svgT); el("circle",{cx:x(raw),cy:y(d),r:5.5,fill:"var(--bad)"},svgT); }
+}
+function lab(){
+  const op=$("l-op").value, cls=CLS[lc.value];
+  const nI=$("l-n"); nI.max=cls.max;
+  let n=Math.min(Math.max(+nI.value||1,1),cls.max); if (+nI.value!==n) nI.value=n;
+  $("l-tgt-w").style.display = op==="send"?"":"none";
+  $("l-val-w").style.display = op==="mute"?"none":"";
+  const N0=+lm.value, ch=cls.base+n-1, db=+$("l-db").value, raw=dbToRaw(db);
+  $("l-dbv").textContent = fmtDb(db);
+  const out=$("l-bytes"); out.innerHTML=""; let text="", code="";
+  const blk=(hx,l,c)=>{const d=h("div",{class:"blk s"+c},out);h("b",{},d).textContent=hx;h("span",{},d).textContent=l;};
+  const label=cls.fmt(n);
+  const accessor={input:"input("+n+")",st:"stereo_input("+n+")",fxr:"fx_return("+n+")",dca:"dca("+n+")",mix:"mix(Mix.MIX"+n+")"}[lc.value];
+  if (op==="mute"){
+    blk("9"+N0.toString(16).toUpperCase()+" "+hex(ch)+" 3F","Note On · "+label+" · vel 3F = unmute (7F = mute)",0);
+    blk("9"+N0.toString(16).toUpperCase()+" "+hex(ch)+" 00","Note On · velocity 0",1);
+    text="Mute is a Note On pair with the channel id as the note number — no registry lookup, no echo expectation. Switch to mute with velocity <code>0x7F</code> by calling <code>mute(True)</code>.";
+    code="await mixer."+accessor+".mute(False)";
+  } else {
+    const st="B"+N0.toString(16).toUpperCase(), id=op==="fader"?0x17:0x20, vx=op==="fader"?7:+lt.value;
+    blk(st+" 63 "+hex(ch),"NRPN MSB = CH ("+label+")",0);
+    blk(st+" 62 "+hex(id),"NRPN LSB = "+(op==="fader"?"fader":"send_level"),1);
+    blk(st+" 06 "+hex(raw),"Data MSB = raw "+raw+" ("+fmtDb(rawToDb(raw))+" read back)",2);
+    blk(st+" 26 "+hex(vx),op==="fader"?"Data LSB = VX filler 07":"Data LSB = VX send target ("+lt.options[lt.selectedIndex].text+")",3);
+    text = "Asked for <b>"+fmtDb(db)+"</b> → nearest raw step <b>"+raw+" (0x"+hex(raw)+")</b>, which reads back as <b>"+fmtDb(rawToDb(raw))+"</b>."+(raw===0?" Below the lowest anchor the library sends raw 0 (−∞), not a guess.":"");
+    const acc = accessor;
+    code = op==="fader" ? "await mixer."+acc+".fader.set_db("+db.toFixed(1)+")"
+      : "await mixer."+acc+".send(Mix."+lt.options[lt.selectedIndex].text.toUpperCase().replace(/[ -]/g,"")+").set_level_db("+db.toFixed(1)+")";
+    drawTaper(raw);
+  }
+  $("l-text").innerHTML=text; $("l-code").textContent=code;
+  if (op==="mute") svgT.innerHTML="";
+}
+["l-op","l-cls","l-n","l-tgt","l-mc","l-db"].forEach(i=>$(i).addEventListener("input",lab));
+lab();
+
+/* ---- decoder ---- */
+const PARAMS={0x16:"pan",0x17:"fader",0x18:"lr_assign",0x20:"send_level",0x50:"mix_pre",0x55:"mix_assign",0x5C:"mute_group_assign"};
+const CMDS={0x01:"get name",0x02:"name reply",0x03:"set name",0x10:"get system state",0x11:"system state reply",0x12:"meters on/off",0x13:"meter data",0x14:"end of sync"};
+function chName(c){
+  const r=(b,m,f)=>c>=b&&c<b+m?f(c-b+1):null;
+  return r(0x00,4,n=>"FX Send "+n)||r(0x08,4,n=>"FX Return "+n)||r(0x10,4,n=>"DCA "+n)||r(0x20,32,n=>"Input "+n)||r(0x40,3,n=>"ST"+n)||r(0x50,4,n=>"Mute Group "+n)||r(0x60,4,n=>"Mix "+n)||(c===0x64?"Mix 5-6":c===0x65?"Mix 7-8":c===0x66?"Mix 9-10":c===0x67?"LR":null)||r(0x68,4,n=>"Group "+(2*n-1)+"-"+(2*n))||r(0x6C,2,n=>"Matrix "+(2*n-1)+"-"+(2*n))||"unassigned";
+}
+function decode(bytes){
+  const out=[]; let i=0; const acc={};
+  let held=null;
+  const flush=()=>{ if(held){ out.push(nrpn(held,null)); held=null; } };
+  const nrpn=(a,vx)=>{
+    const nm=PARAMS[a.id]||"unrecognised (dropped)";
+    let v=a.value, extra="";
+    if (a.id===0x17||a.id===0x20) extra=" → "+fmtDb(rawToDb(v));
+    return {k:"nrpn",t:"NRPN · MIDI ch "+(a.m+1)+" · CH 0x"+hex(a.ch)+" ("+chName(a.ch)+") · ID 0x"+hex(a.id)+" ("+nm+") · value 0x"+hex(v)+" ("+v+extra+") · VX "+(vx===null?"(none — flushed early)":"0x"+hex(vx))};
+  };
+  while(i<bytes.length){
+    const b=bytes[i];
+    if (b===0xFE){ out.push({k:"rt",t:"Active Sensing (keepalive) — ignored by the NRPN decoder"}); i++; continue; }
+    if (b===0xF0){
+      let j=i+1; while(j<bytes.length&&bytes[j]!==0xF7)j++;
+      flush();
+      const d=bytes.slice(i+1,j), pre=[0,0,0x1A,0x50,0x11,0x01,0];
+      const ok=pre.every((x,k)=>d[k]===x);
+      if(ok){ const c=d[7], cmd=d[8]; out.push({k:"sx",t:"Qu SysEx · "+(c===0x7F?"all-call":"MIDI ch "+(c+1))+" · cmd 0x"+hex(cmd)+" ("+(CMDS[cmd]||"?")+") · payload "+d.slice(9).map(x=>hex(x)).join(" ")+(cmd===3||cmd===2?"  “"+String.fromCharCode(...d.slice(10)).replace(/\0/g,"")+"”":"")}); }
+      else out.push({k:"sx",t:"Foreign SysEx — not ours, ignored"});
+      i=j+1; continue;
+    }
+    const hi=b&0xF0, m=b&0x0F;
+    if (hi===0xB0 && i+2<bytes.length){
+      const c=bytes[i+1], v=bytes[i+2]; acc[m]=acc[m]||{};
+      if (c===0x63){ flush(); acc[m].ch=v; acc[m].id=null; }
+      else if (c===0x62){ flush(); acc[m].id=v; }
+      else if (c===0x06){ flush(); if(acc[m].ch!=null&&acc[m].id!=null) held={m,ch:acc[m].ch,id:acc[m].id,value:v}; }
+      else if (c===0x26){ if(held&&held.m===m){ out.push(nrpn(held,v)); held=null; } }
+      else { flush(); out.push({k:"cc",t:"CC "+hex(c)+" = "+v+" (not part of NRPN; ends the hold window)"}); }
+      i+=3; continue;
+    }
+    if (hi===0x90 && i+2<bytes.length){ flush(); const v=bytes[i+2]; out.push({k:"note",t:"Note On · MIDI ch "+(m+1)+" · note 0x"+hex(bytes[i+1])+" ("+chName(bytes[i+1])+") · velocity 0x"+hex(v)+(v===0x7F?" = MUTE":v===0x3F?" = UNMUTE":v===0?" = release":"")}); i+=3; continue; }
+    if (hi===0xC0 && i+1<bytes.length){ flush(); out.push({k:"pc",t:"Program Change · scene "+(bytes[i+1]+1)+" (wire value "+bytes[i+1]+")"}); i+=2; continue; }
+    out.push({k:"x",t:"Unparsed byte 0x"+hex(b)}); i++;
+  }
+  flush(); return out;
+}
+function runDecode(){
+  const raw=$("d-in").value.replace(/0x/gi,"").split(/[^0-9a-fA-F]+/).filter(Boolean).map(s=>parseInt(s,16));
+  const box=$("d-out"); box.innerHTML="";
+  if (!raw.length){ box.textContent="No bytes."; return; }
+  decode(raw).forEach(o=>{ const d=h("div",{class:"blk s"+({nrpn:0,note:1,sx:3,rt:5,pc:2,cc:5,x:4}[o.k])},box); d.style.maxWidth="none"; d.style.margin="0 0 6px"; d.innerHTML="<span style='color:var(--ink);font-family:var(--mono);font-size:12.5px'></span>"; d.firstChild.textContent=o.t; });
+}
+$("d-in").addEventListener("input",runDecode); runDecode();
+</script>
+</body>
+</html>
