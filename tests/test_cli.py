@@ -1,4 +1,4 @@
-"""Coverage for build_parser()'s flag placement (PRD 17).
+"""Coverage for build_parser()'s flag placement.
 
 --wire/-v are shared between the top-level parser and every subparser so they
 can be given either before or after the subcommand. argparse's subparsers
@@ -14,7 +14,7 @@ import asyncio
 
 import pytest
 
-from qumidi.cli import build_parser, main
+from qumixer_py.cli import build_parser, main
 
 
 def test_wire_before_the_subcommand_is_not_clobbered() -> None:
@@ -28,7 +28,7 @@ def test_wire_after_the_subcommand_still_works() -> None:
 
 
 def test_wire_after_set_and_its_positionals_works() -> None:
-    # PRD 7.2 hand-test ordering: `qumidi set --host H mute input:6 on --wire`.
+    # Hand-test ordering: `qumixer-py set --host H mute input:6 on --wire`.
     args = build_parser().parse_args(
         ["set", "--host", "1.2.3.4", "mute", "input:6", "on", "--wire"]
     )
@@ -67,9 +67,9 @@ def test_to_and_to_band_are_mutually_exclusive() -> None:
 
 
 async def test_set_to_band_reaches_the_console_as_a_raw_vx_integer(fake_qu_factory) -> None:  # type: ignore[no-untyped-def]
-    # geq_gain lr -6db --to-band 15 (PRD 7.2, 11.1: band 15 is 1 kHz) must
-    # encode with VX = 0x0F on channel 0x67 (LR), id 0x70 -- exactly the CLI
-    # hand-test in the task 5.5 brief, run here against FakeQu instead of a
+    # geq_gain lr -6db --to-band 15 must
+    # encode with VX = 0x0F on channel 0x67 (LR), id 0x70 -- the same check
+    # as a manual CLI hand-test, run here against FakeQu instead of a
     # real console.
     fake = await fake_qu_factory()
     rc = await asyncio.get_running_loop().run_in_executor(

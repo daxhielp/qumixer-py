@@ -2,14 +2,14 @@ import asyncio
 
 import pytest
 
-from qumidi.client_async import AsyncQuMixer
-from qumidi.errors import (
+from qumixer_py.client_async import AsyncQuMixer
+from qumixer_py.errors import (
     NotSyncedError,
     ParameterRangeError,
     UnknownParameterError,
     UnsupportedOnModelError,
 )
-from qumidi.protocol.channels import Group, Input, Mix
+from qumixer_py.protocol.channels import Group, Input, Mix
 
 
 async def test_set_fader_by_raw_emits_the_golden_bytes(fake_qu_factory) -> None:  # type: ignore[no-untyped-def]
@@ -55,7 +55,7 @@ async def test_set_rejects_a_value_outside_the_domain(fake_qu_factory) -> None: 
 
 
 async def test_mix_assign_to_lr_is_rejected(fake_qu_factory) -> None:  # type: ignore[no-untyped-def]
-    # PRD 14.8: encode LR assignment exclusively as 18; 55/07 is rejected.
+    # encode LR assignment exclusively as 18; 55/07 is rejected.
     fake = await fake_qu_factory()
     async with AsyncQuMixer("127.0.0.1", port=fake.port) as mixer:
         await mixer.wait_synced()
@@ -108,6 +108,6 @@ async def test_the_state_burst_arrives_before_the_end_marker(fake_qu_factory) ->
     fake = await fake_qu_factory(scene={(0x25, 0x17, 0x07): 0x4F})
     async with AsyncQuMixer("127.0.0.1", port=fake.port) as mixer:
         await mixer.wait_synced()
-        # Slice 4 turns this into a cache assertion; for now, just prove the
+        # A later test asserts on the cache; for now, just prove the
         # burst is emitted and parsed without breaking the sync handshake.
         assert mixer.state.name == "READY"

@@ -2,7 +2,7 @@
 
 ## "I connected but nothing happened"
 
-Run `qumidi probe --host <ip>` first. It connects, reports the model,
+Run `qumixer-py probe --host <ip>` first. It connects, reports the model,
 firmware and MIDI channel, and disconnects.
 
 If it hangs or refuses: **the Qu permits exactly one TCP MIDI connection at a
@@ -12,8 +12,8 @@ If you have no console to hand, run the bundled fake one and probe that first,
 to prove the client half works:
 
 ```bash
-python -m qumidi.testing.fake_qu --model qu32 --port 51325 &
-qumidi probe --host 127.0.0.1
+python -m qumixer_py.testing.fake_qu --model qu32 --port 51325 &
+qumixer-py probe --host 127.0.0.1
 ```
 
 ## "My write did nothing"
@@ -48,14 +48,14 @@ Work down this list in order.
    is a gap at `0x0E`-`0x0F`. Pass `vx=Mix.MIX3` or `vx=Group(1)`, never a
    hand-computed byte. Assigning to LR is `lr_assign` (`18`), and
    `mix_assign` with an LR destination is deliberately refused — see
-   erratum 14.8 in [protocol-notes.md](protocol-notes.md).
+   protocol note 8 in [protocol-notes.md](protocol-notes.md).
 
-6. **Enable the wire log.** `qumidi <command> --wire`, or in code:
+6. **Enable the wire log.** `qumixer-py <command> --wire`, or in code:
 
    ```python
    import logging
    logging.basicConfig(level=logging.DEBUG)
-   logging.getLogger("qumidi.wire").setLevel(logging.DEBUG)
+   logging.getLogger("qumixer_py.wire").setLevel(logging.DEBUG)
    ```
 
    Compare the emitted bytes against `tests/fixtures/golden_params.yaml`. A
@@ -87,12 +87,12 @@ data. `mixer.meters.stream()` never yields a wrong-sized frame.
 If metering disabled itself, capture a frame and supply a corrected layout:
 
 ```bash
-qumidi record --host <ip> --out frame.bin --seconds 2 --meters
+qumixer-py record --host <ip> --out frame.bin --seconds 2 --meters
 ```
 
 then `mixer.meters.set_layout(...)`. Please open an issue with the observed
 frame length and your console model — the Qu-24 layout in particular is still
-unresolved between two candidates (erratum 14.12).
+unresolved between two candidates (protocol note 12).
 
 ## "Reading a value raises ValueUnknownError"
 
@@ -118,8 +118,7 @@ library rebuilds its capability set from scratch.
 `recall_scene()` sends the Program Change, marks the cache `STALE`, waits
 `scene_settle_delay` (500 ms by default), then resyncs and re-sweeps names,
 emitting `SceneRecalled` and then `SyncComplete`. The settle delay is a
-heuristic — the console gives no "recall finished" signal at all (erratum
-14.13). A large scene may need longer; pass a bigger `scene_settle_delay` to
+heuristic — the console gives no "recall finished" signal at all (protocol note 13). A large scene may need longer; pass a bigger `scene_settle_delay` to
 the constructor if you see stale values immediately after a recall.
 
 Any `SurfaceMap` you registered is invalidated by a recall, because a scene can
@@ -136,7 +135,7 @@ and there is no channel 17. Move the console to MIDI channel 1-15.
 Record the traffic once, then replay it:
 
 ```bash
-qumidi record --host <ip> --out capture.bin --seconds 30
-qumidi replay capture.bin --port 51325
-qumidi monitor --host 127.0.0.1
+qumixer-py record --host <ip> --out capture.bin --seconds 30
+qumixer-py replay capture.bin --port 51325
+qumixer-py monitor --host 127.0.0.1
 ```

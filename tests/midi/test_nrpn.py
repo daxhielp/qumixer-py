@@ -1,8 +1,8 @@
 import pytest
 
-from qumidi.midi.messages import ControlChange, NoteOn, SysEx
-from qumidi.midi.nrpn import NrpnDecoder, RawParamUpdate, encode_nrpn
-from qumidi.midi.parser import MidiStreamParser
+from qumixer_py.midi.messages import ControlChange, NoteOn, SysEx
+from qumixer_py.midi.nrpn import NrpnDecoder, RawParamUpdate, encode_nrpn
+from qumixer_py.midi.parser import MidiStreamParser
 
 
 def test_encode_emits_the_four_ccs_in_the_documented_order() -> None:
@@ -47,7 +47,7 @@ def test_decode_a_complete_quad() -> None:
 
 
 def test_decode_under_running_status() -> None:
-    # PRD 5.3: the (CH, ID) pair persists across messages under running status.
+    # the (CH, ID) pair persists across messages under running status.
     d = NrpnDecoder()
     data = bytes(
         [0xB0, 0x63, 0x25, 0x62, 0x17, 0x06, 0x62, 0x26, 0x07, 0x62, 0x18, 0x06, 0x01, 0x26, 0x07]
@@ -61,7 +61,7 @@ def test_decode_under_running_status() -> None:
 
 
 def test_update_with_no_data_lsb_emits_with_vx_none() -> None:
-    # PRD 5.3: some senders omit the LSB. Emit on 06, revise on a following 26.
+    # some senders omit the LSB. Emit on 06, revise on a following 26.
     d = NrpnDecoder()
     data = bytes([0xB0, 0x63, 0x25, 0xB0, 0x62, 0x17, 0xB0, 0x06, 0x62, 0xB0, 0x62, 0x18])
     out = feed_bytes(d, data)
@@ -70,7 +70,7 @@ def test_update_with_no_data_lsb_emits_with_vx_none() -> None:
 
 
 def test_stream_ending_after_data_msb_still_yields_one_update() -> None:
-    # PRD 5.3: test explicitly that a stream ending in "... B0 06 62" with
+    # test explicitly that a stream ending in "... B0 06 62" with
     # nothing after it still yields one ParamUpdate.
     d = NrpnDecoder()
     out = feed_bytes(d, bytes([0xB0, 0x63, 0x25, 0xB0, 0x62, 0x17, 0xB0, 0x06, 0x62]))
@@ -79,9 +79,9 @@ def test_stream_ending_after_data_msb_still_yields_one_update() -> None:
 
 
 def test_active_sensing_does_not_flush_the_held_update() -> None:
-    # PRD 5.3: FE arrives every 300ms and would break every NRPN pair if it
+    # FE arrives every 300ms and would break every NRPN pair if it
     # were treated as "a subsequent message".
-    from qumidi.midi.messages import SystemRealtime
+    from qumixer_py.midi.messages import SystemRealtime
 
     d = NrpnDecoder()
     out = feed_bytes(d, bytes([0xB0, 0x63, 0x25, 0xB0, 0x62, 0x17, 0xB0, 0x06, 0x62]))
@@ -99,7 +99,7 @@ def test_a_non_cc_message_flushes_the_held_update() -> None:
 
 
 def test_a_sysex_flushes_the_held_update() -> None:
-    # PRD 9.3.7: flush when 14 arrives, or the last parameter in the burst is
+    # flush when 14 arrives, or the last parameter in the burst is
     # stranded and the cache is silently one value short after every sync.
     d = NrpnDecoder()
     out = feed_bytes(d, bytes([0xB0, 0x63, 0x25, 0xB0, 0x62, 0x17, 0xB0, 0x06, 0x62]))

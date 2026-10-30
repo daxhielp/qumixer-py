@@ -17,7 +17,7 @@ be silently dropped. Use `diff()` and decide what to send.
 
 Run it against the bundled fake console::
 
-    python -m qumidi.testing.fake_qu --port 51325 &
+    python -m qumixer_py.testing.fake_qu --port 51325 &
     python examples/state_dump.py --host 127.0.0.1 --once
 """
 
@@ -29,7 +29,7 @@ import collections
 import contextlib
 import json
 
-from qumidi import AsyncQuMixer
+from qumixer_py import AsyncQuMixer
 
 
 def parse_args() -> argparse.Namespace:

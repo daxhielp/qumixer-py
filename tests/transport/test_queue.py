@@ -1,6 +1,6 @@
 import asyncio
 
-from qumidi.transport.queue import OutboundQueue
+from qumixer_py.transport.queue import OutboundQueue
 
 
 class Sink:
@@ -23,7 +23,7 @@ async def test_send_resolves_only_after_the_sink_has_seen_the_bytes() -> None:
     await q.start()
     try:
         await q.send(b"\x01\x02")
-        # PRD 4.5: resolves when handed to the socket and drained, not queued.
+        # resolves when handed to the socket and drained, not queued.
         assert sink.joined == b"\x01\x02"
     finally:
         await q.stop()
@@ -41,7 +41,7 @@ async def test_writes_are_transmitted_in_issue_order() -> None:
 
 
 async def test_concurrent_sends_never_interleave_a_multi_byte_payload() -> None:
-    # PRD 4.5: concurrent set() calls from different tasks never interleave
+    # concurrent set() calls from different tasks never interleave
     # the four CCs of an NRPN triplet.
     sink = Sink()
     q = OutboundQueue(sink, max_send_rate=None)
@@ -71,7 +71,7 @@ async def test_throttle_limits_the_byte_rate() -> None:
 
 
 async def test_priority_send_bypasses_the_throttle() -> None:
-    # PRD 4.5: keepalive and meter enable/disable must never be starved by a
+    # keepalive and meter enable/disable must never be starved by a
     # bulk write.
     sink = Sink()
     q = OutboundQueue(sink, max_send_rate=200)
@@ -107,7 +107,7 @@ async def test_pending_reports_the_backlog() -> None:
 
 
 async def test_queue_is_bounded_and_applies_backpressure() -> None:
-    # PRD 18: no unbounded queues anywhere; the outbound queue applies
+    # no unbounded queues anywhere; the outbound queue applies
     # backpressure to set() rather than growing.
     sink = Sink()
     q = OutboundQueue(sink, max_send_rate=50, maxsize=4)
@@ -123,7 +123,7 @@ async def test_queue_is_bounded_and_applies_backpressure() -> None:
 
 
 async def test_clear_drops_the_backlog_and_fails_its_waiters() -> None:
-    # PRD 4.4: drop the outbound queue on disconnect.
+    # drop the outbound queue on disconnect.
     sink = Sink()
     q = OutboundQueue(sink, max_send_rate=50)
     await q.start()

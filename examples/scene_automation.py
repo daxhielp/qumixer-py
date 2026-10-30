@@ -4,7 +4,7 @@
 A scene recall is the one operation that invalidates everything the client
 believes. The protocol gives no "recall finished" signal at all, so the
 library recalls, waits a settling delay, resyncs, re-sweeps names, and only
-then emits `SyncComplete` (see erratum 14.13 in docs/protocol-notes.md).
+then emits `SyncComplete` (see protocol note 13 in docs/protocol-notes.md).
 
 The mistake this example exists to prevent is writing your overlay immediately
 after `recall_scene()` returns *without* waiting for that resync, and then
@@ -12,7 +12,7 @@ reading back values that belong to the scene you just left.
 
 Run it against the bundled fake console::
 
-    python -m qumidi.testing.fake_qu --port 51325 &
+    python -m qumixer_py.testing.fake_qu --port 51325 &
     python examples/scene_automation.py --host 127.0.0.1 --once
 """
 
@@ -22,7 +22,7 @@ import argparse
 import asyncio
 import contextlib
 
-from qumidi import AsyncQuMixer, Input, Mix
+from qumixer_py import AsyncQuMixer, Input, Mix
 
 
 def parse_args() -> argparse.Namespace:

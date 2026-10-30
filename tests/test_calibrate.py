@@ -1,4 +1,4 @@
-"""Tests for tools/calibrate.py's pure formatting logic (Task 12.3).
+"""Tests for tools/calibrate.py's pure formatting logic.
 
 The tool itself is an interactive hardware operator instrument -- ``sweep()``
 drives a real console and blocks on ``input()`` -- so it cannot be exercised
@@ -44,7 +44,7 @@ def test_format_taper_source_is_valid_python_defining_a_taper() -> None:
     actually parse and construct a real, valid Taper (ascending raws, >= 2
     points), not merely look plausible as a string.
     """
-    from qumidi.protocol.units import Taper
+    from qumixer_py.protocol.units import Taper
 
     source = format_taper_source(
         "comp.release", "In 5", "ms", [(0x00, 100.0), (0x40, 900.0), (0x7F, 2000.0)]

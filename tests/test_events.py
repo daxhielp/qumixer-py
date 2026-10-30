@@ -1,8 +1,8 @@
 import logging
 
-from qumidi.events import ChangeEvent, EventBus, Source
-from qumidi.protocol.channels import Input, Mix
-from qumidi.state import CachedValue, Freshness
+from qumixer_py.events import ChangeEvent, EventBus, Source
+from qumixer_py.protocol.channels import Input, Mix
+from qumixer_py.state import CachedValue, Freshness
 
 KNOWN = CachedValue(raw=0x62, freshness=Freshness.KNOWN, updated_at=1.0)
 OLD = CachedValue(raw=0x50, freshness=Freshness.KNOWN, updated_at=0.0)
@@ -52,7 +52,7 @@ def test_unsubscribe() -> None:
 
 
 def test_a_raising_callback_does_not_stop_the_others(caplog) -> None:  # type: ignore[no-untyped-def]
-    # PRD 10.4: exceptions in user callbacks are caught and logged, never
+    # exceptions in user callbacks are caught and logged, never
     # allowed to kill the read loop.
     bus = EventBus()
     seen: list[ChangeEvent] = []
@@ -78,7 +78,7 @@ def test_a_slow_callback_logs_a_warning(caplog) -> None:  # type: ignore[no-unty
 
 
 def test_the_other_subscription_kinds_fire() -> None:
-    from qumidi.transport.base import ConnectionState
+    from qumixer_py.transport.base import ConnectionState
 
     bus = EventBus()
     calls: dict[str, object] = {}
@@ -99,6 +99,6 @@ def test_the_other_subscription_kinds_fire() -> None:
 
 
 def test_change_event_carries_the_sub_index() -> None:
-    # PRD 10.4: the payload includes the sub-index from 10.1a.
+    # the payload includes the sub-index.
     e = event(param="dca_assign", sub=2)
     assert e.sub_index == 2

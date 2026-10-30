@@ -1,8 +1,8 @@
 import pytest
 
-from qumidi.errors import MeterLayoutError
-from qumidi.protocol.channels import Mix
-from qumidi.protocol.meters import (
+from qumixer_py.errors import MeterLayoutError
+from qumixer_py.protocol.channels import Mix
+from qumixer_py.protocol.meters import (
     LAYOUTS,
     QU24_ALTERNATE,
     Meter,
@@ -20,7 +20,7 @@ def test_totals_match_the_prd_arithmetic(model, total) -> None:  # type: ignore[
 
 
 def test_the_qu24_alternate_candidate_is_encoded_too() -> None:
-    # PRD 14.12: a Qu-24 frame cannot plausibly be larger than a Qu-32 frame.
+    # a Qu-24 frame cannot plausibly be larger than a Qu-32 frame.
     # Encode both candidates; the runtime size check picks.
     assert QU24_ALTERNATE.total_meters == 750
     assert LAYOUTS["qu24"].total_meters > LAYOUTS["qu32"].total_meters  # the suspect one
@@ -44,7 +44,7 @@ def test_mono_input_meters_are_ten_wide() -> None:
 
 
 def test_qu32_inputs_are_not_contiguous() -> None:
-    # PRD 12.3: channels 25-32 appear after the stereo inputs and a 20-meter gap.
+    # channels 25-32 appear after the stereo inputs and a 20-meter gap.
     layout = LAYOUTS["qu32"]
     assert layout.offset_of(MeterSlot.input(24, Meter.POST_PREAMP)) == 230
     # 24 mono (240) + 3 stereo (60) + 20 unused = 320
@@ -52,7 +52,7 @@ def test_qu32_inputs_are_not_contiguous() -> None:
 
 
 def test_the_fourth_stereo_mix_block_is_lr() -> None:
-    # PRD 12.3: getting this wrong shifts every subsequent block by 20 meters.
+    # getting this wrong shifts every subsequent block by 20 meters.
     layout = LAYOUTS["qu32"]
     mix910 = layout.offset_of(MeterSlot.mix(Mix.MIX910, Meter.POST_FADER))
     lr = layout.offset_of(MeterSlot.mix(Mix.LR, Meter.POST_FADER))
@@ -100,7 +100,7 @@ def test_rta_has_31_bands_per_side() -> None:
 
 
 def test_asking_for_a_meter_the_block_does_not_have_is_an_error() -> None:
-    # PRD 12.1: asking for POST_PREAMP on a mix block is an error, not a
+    # asking for POST_PREAMP on a mix block is an error, not a
     # silent wrong index.
     layout = LAYOUTS["qu32"]
     with pytest.raises(MeterLayoutError):
@@ -108,7 +108,7 @@ def test_asking_for_a_meter_the_block_does_not_have_is_an_error() -> None:
 
 
 def test_a_non_positive_index_is_an_error_not_a_wrapped_offset() -> None:
-    # PRD 12.1: every MeterSlot factory is 1-based. Without a floor check,
+    # every MeterSlot factory is 1-based. Without a floor check,
     # offset_of(index=0) computes a negative offset (within = 0 - 0 - 1 =
     # -1) that Python's slicing later reinterprets as "count from the end
     # of the buffer" instead of raising -- silently returning the wrong
@@ -137,7 +137,7 @@ def test_a_frame_of_the_wrong_size_is_rejected_at_construction() -> None:
 
 
 def test_an_odd_payload_length_is_rejected() -> None:
-    # PRD 12.2: an odd length means the frame was truncated or the packing is
+    # an odd length means the frame was truncated or the packing is
     # misunderstood.
     layout = LAYOUTS["qu32"]
     with pytest.raises(MeterLayoutError):

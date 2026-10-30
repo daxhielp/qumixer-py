@@ -1,16 +1,16 @@
 import pytest
 
-from qumidi.client_async import AsyncQuMixer
-from qumidi.errors import ParameterRangeError
-from qumidi.protocol.channels import Input
-from qumidi.state import Freshness
+from qumixer_py.client_async import AsyncQuMixer
+from qumixer_py.errors import ParameterRangeError
+from qumixer_py.protocol.channels import Input
+from qumixer_py.state import Freshness
 
 SCENE1 = {(0x25, 0x17, 0x07): 0x62}
 SCENE12 = {(0x25, 0x17, 0x07): 0x30}
 
 
 async def test_recall_sends_bank_select_immediately_before_program_change(fake_qu_factory) -> None:  # type: ignore[no-untyped-def]
-    # PRD 7.2: the Qu ignores program changes if Bank 1 is not currently
+    # the Qu ignores program changes if Bank 1 is not currently
     # selected, so always send the bank select immediately before.
     fake = await fake_qu_factory(scene=SCENE1)
     async with AsyncQuMixer("127.0.0.1", port=fake.port, scene_settle_delay=0.01) as mixer:
@@ -22,7 +22,7 @@ async def test_recall_sends_bank_select_immediately_before_program_change(fake_q
 
 
 async def test_the_api_is_one_based(fake_qu_factory) -> None:  # type: ignore[no-untyped-def]
-    # PRD 7.2: recall_scene(1) sends SS = 00, matching the console's display.
+    # recall_scene(1) sends SS = 00, matching the console's display.
     fake = await fake_qu_factory(scene=SCENE1)
     async with AsyncQuMixer("127.0.0.1", port=fake.port, scene_settle_delay=0.01) as mixer:
         await mixer.wait_synced()
@@ -51,7 +51,7 @@ async def test_recall_uses_the_consoles_midi_channel(fake_qu_factory) -> None:  
 
 
 async def test_recall_marks_the_cache_stale_then_rebuilds_it(fake_qu_factory) -> None:  # type: ignore[no-untyped-def]
-    # PRD 16.12.
+    #.
     fake = await fake_qu_factory(scene=SCENE1, scenes={12: SCENE12})
     freshness_during: list[Freshness] = []
     async with AsyncQuMixer("127.0.0.1", port=fake.port, scene_settle_delay=0.05) as mixer:
@@ -67,7 +67,7 @@ async def test_recall_marks_the_cache_stale_then_rebuilds_it(fake_qu_factory) ->
 
 
 async def test_scene_recalled_precedes_sync_complete(fake_qu_factory) -> None:  # type: ignore[no-untyped-def]
-    # PRD 16.12: in that order.
+    # in that order.
     fake = await fake_qu_factory(scene=SCENE1, scenes={12: SCENE12})
     order: list[str] = []
     async with AsyncQuMixer("127.0.0.1", port=fake.port, scene_settle_delay=0.02) as mixer:
@@ -79,7 +79,7 @@ async def test_scene_recalled_precedes_sync_complete(fake_qu_factory) -> None:  
 
 
 async def test_names_are_re_swept_after_a_recall(fake_qu_factory) -> None:  # type: ignore[no-untyped-def]
-    # PRD 7.2: channel names are scene data and will have changed.
+    # channel names are scene data and will have changed.
     fake = await fake_qu_factory(scene=SCENE1, names={0x25: "Kick"},
                                  scene_names={12: {0x25: "Snare"}})
     async with AsyncQuMixer("127.0.0.1", port=fake.port, scene_settle_delay=0.02) as mixer:
@@ -90,7 +90,7 @@ async def test_names_are_re_swept_after_a_recall(fake_qu_factory) -> None:  # ty
 
 
 async def test_sync_complete_fires_after_the_post_recall_name_sweep(fake_qu_factory) -> None:  # type: ignore[no-untyped-def]
-    # Slice 7 acceptance (PRD 16.12): stale, SceneRecalled, resync, name
+    # Expected order: stale, SceneRecalled, resync, name
     # re-sweep, and finally SyncComplete -- in that order. The re-sweep must
     # already be done by the time SyncComplete fires, not just the burst.
     fake = await fake_qu_factory(scene=SCENE1, names={0x25: "Kick"},
@@ -116,7 +116,7 @@ async def test_resync_false_skips_the_rebuild(fake_qu_factory) -> None:  # type:
 
 
 async def test_last_recalled_scene_reflects_only_this_clients_recalls(fake_qu_factory) -> None:  # type: ignore[no-untyped-def]
-    # PRD 7.2: there is no way to read the current scene number.
+    # there is no way to read the current scene number.
     fake = await fake_qu_factory(scene=SCENE1)
     async with AsyncQuMixer("127.0.0.1", port=fake.port, scene_settle_delay=0.01) as mixer:
         await mixer.wait_synced()

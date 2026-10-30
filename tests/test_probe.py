@@ -2,9 +2,9 @@ import asyncio
 
 import pytest
 
-from qumidi.client_async import AsyncQuMixer
-from qumidi.errors import QuConnectionError, SyncTimeoutError
-from qumidi.transport.base import ConnectionState
+from qumixer_py.client_async import AsyncQuMixer
+from qumixer_py.errors import QuConnectionError, SyncTimeoutError
+from qumixer_py.transport.base import ConnectionState
 
 
 async def test_probe_learns_box_id_firmware_and_channel(fake_qu_factory) -> None:  # type: ignore[no-untyped-def]
@@ -14,14 +14,14 @@ async def test_probe_learns_box_id_firmware_and_channel(fake_qu_factory) -> None
         assert mixer.box_id == 2
         assert mixer.firmware == (1, 9)
         assert mixer.midi_channel == 5
-        # PRD 9.1: the public API and all log messages use the 1-based number
+        # the public API and all log messages use the 1-based number
         # the console displays.
         assert mixer.midi_channel_display == 6
         assert mixer.state is ConnectionState.READY
 
 
 async def test_no_reply_at_all_raises_connection_error_naming_the_limit(fake_qu_factory) -> None:  # type: ignore[no-untyped-def]
-    # PRD 9.3.9: no 11 within reply_timeout means the host is not a Qu, or
+    # no 11 within reply_timeout means the host is not a Qu, or
     # another client holds the session.
     #
     # The connection handler must be a coroutine function that holds the
@@ -60,7 +60,7 @@ async def test_no_reply_at_all_raises_connection_error_naming_the_limit(fake_qu_
 
 
 async def test_reply_but_no_end_marker_raises_sync_timeout(fake_qu_factory) -> None:  # type: ignore[no-untyped-def]
-    # PRD 9.3.9: a 11 but no 14 is a *different* failure and must say so.
+    # a 11 but no 14 is a *different* failure and must say so.
     fake = await fake_qu_factory(send_end_marker=False)
     before = len(asyncio.all_tasks())
     mixer = AsyncQuMixer("127.0.0.1", port=fake.port, sync_timeout=0.4)
@@ -82,7 +82,7 @@ async def test_context_manager_closes_cleanly(fake_qu_factory) -> None:  # type:
 
 
 async def test_probe_resolves_the_model(fake_qu_factory) -> None:  # type: ignore[no-untyped-def]
-    from qumidi.protocol.channels import Model
+    from qumixer_py.protocol.channels import Model
 
     fake = await fake_qu_factory(model="qu16")
     async with AsyncQuMixer("127.0.0.1", port=fake.port) as mixer:
@@ -101,7 +101,7 @@ async def test_unknown_box_id_still_connects(fake_qu_factory, caplog) -> None:  
 
 
 async def test_firmware_below_the_floor_warns_but_connects(fake_qu_factory, caplog) -> None:  # type: ignore[no-untyped-def]
-    # PRD 6.2: do not raise, and do not silently pretend the registry applies.
+    # do not raise, and do not silently pretend the registry applies.
     fake = await fake_qu_factory(firmware=(1, 7))
     async with AsyncQuMixer("127.0.0.1", port=fake.port) as mixer:
         await mixer.wait_synced()

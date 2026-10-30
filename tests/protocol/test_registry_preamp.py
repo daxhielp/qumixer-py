@@ -1,9 +1,9 @@
 import pytest
 
-from qumidi.protocol.channels import ChannelClass
-from qumidi.protocol.params import Direction, DsnakeSocket, Fixed, Tier
-from qumidi.protocol.registry import REGISTRY
-from qumidi.protocol.units import DSNAKE_GAIN_TAPER, LOCAL_GAIN_TAPER, TRIM_TAPER
+from qumixer_py.protocol.channels import ChannelClass
+from qumixer_py.protocol.params import Direction, DsnakeSocket, Fixed, Tier
+from qumixer_py.protocol.registry import REGISTRY
+from qumixer_py.protocol.units import DSNAKE_GAIN_TAPER, LOCAL_GAIN_TAPER, TRIM_TAPER
 
 
 @pytest.mark.parametrize(
@@ -30,7 +30,7 @@ def test_ids_and_fillers(name, nrpn_id, vx_filler) -> None:  # type: ignore[no-u
 @pytest.mark.parametrize("name,nrpn_id", [("dsnake_gain", 0x58), ("dsnake_pad", 0x59),
                                           ("dsnake_48v", 0x5A)])
 def test_the_dsnake_family_is_socket_addressed_and_experimental(name, nrpn_id) -> None:  # type: ignore[no-untyped-def]
-    # PRD 7.2: CH is ambiguous until M6 resolves it.
+    # CH is ambiguous until hardware verification resolves it.
     spec = REGISTRY.lookup(name)
     assert spec.nrpn_id == nrpn_id
     assert isinstance(spec.vx, DsnakeSocket)
@@ -38,7 +38,7 @@ def test_the_dsnake_family_is_socket_addressed_and_experimental(name, nrpn_id) -
 
 
 def test_dsnake_patch_is_rx_only() -> None:
-    # PRD 7.2: it is the map from channel to socket, and the only way to know
+    # it is the map from channel to socket, and the only way to know
     # which socket a channel's remote preamp lives on.
     assert REGISTRY.lookup("dsnake_patch").direction is Direction.RX_ONLY
 
@@ -51,9 +51,9 @@ def test_group_mode_is_rx_only_and_global() -> None:
 
 
 def test_there_is_no_local_pad_parameter() -> None:
-    # PRD 7.2: local preamp has no pad parameter; only dSNAKE does. Do not
+    # local preamp has no pad parameter; only dSNAKE does. Do not
     # invent one.
-    from qumidi.errors import UnknownParameterError
+    from qumixer_py.errors import UnknownParameterError
 
     with pytest.raises(UnknownParameterError):
         REGISTRY.lookup("local_pad")

@@ -1,7 +1,7 @@
 import pytest
 
-from qumidi.errors import ParameterRangeError
-from qumidi.protocol.channels import (
+from qumixer_py.errors import ParameterRangeError
+from qumixer_py.protocol.channels import (
     GLOBAL,
     ChannelClass,
     Dca,
@@ -51,14 +51,14 @@ def test_channel_ids_match_the_spec_table(channel, raw, cls) -> None:  # type: i
 
 
 def test_mix_is_seven_ids_not_ten() -> None:
-    # PRD 6.1: "Mix 1 to 10" occupies only seven ids because 5-6/7-8/9-10 are stereo.
+    # "Mix 1 to 10" occupies only seven ids because 5-6/7-8/9-10 are stereo.
     ids = {Mix.MIX1, Mix.MIX2, Mix.MIX3, Mix.MIX4, Mix.MIX56, Mix.MIX78, Mix.MIX910}
     assert len(ids) == 7
     assert {m.value for m in ids} == set(range(0x60, 0x67))
 
 
 def test_lr_is_its_own_class_not_a_stereo_mix() -> None:
-    # PRD 6.1: pan and delay behave differently on LR, and the meter layout
+    # pan and delay behave differently on LR, and the meter layout
     # treats it as a separate block.
     assert Mix.LR.cls is ChannelClass.LR
     assert Mix.MIX56.cls is ChannelClass.MIX_STEREO
@@ -96,7 +96,7 @@ def test_channel_from_raw_rejects_an_unassigned_byte() -> None:
 
 
 def test_global_is_synthetic_and_has_no_wire_value() -> None:
-    # PRD 7.2: Group Mode has no documented CH; store it under a synthetic id.
+    # Group Mode has no documented CH; store it under a synthetic id.
     assert GLOBAL.cls is ChannelClass.GLOBAL
     assert GLOBAL.value == -1
 

@@ -1,7 +1,7 @@
 import asyncio
 
-from qumidi.client_async import AsyncQuMixer
-from qumidi.transport.tcp import TcpTransport
+from qumixer_py.client_async import AsyncQuMixer
+from qumixer_py.transport.tcp import TcpTransport
 
 
 async def test_a_ramp_walks_the_value_to_the_target(fake_qu_factory) -> None:  # type: ignore[no-untyped-def]
@@ -14,7 +14,7 @@ async def test_a_ramp_walks_the_value_to_the_target(fake_qu_factory) -> None:  #
 
 
 async def test_a_128_step_ramp_stays_within_the_send_rate(fake_qu_factory) -> None:  # type: ignore[no-untyped-def]
-    # PRD 16.14. Each NRPN write is 12 bytes; 127 steps is ~1524 bytes, which
+    #. Each NRPN write is 12 bytes; 127 steps is ~1524 bytes, which
     # at 1000 B/s cannot complete in under 1.5s no matter what duration says.
     fake = await fake_qu_factory(scene={(0x25, 0x17, 0x07): 0x7F})
     async with AsyncQuMixer("127.0.0.1", port=fake.port, max_send_rate=1000) as mixer:
@@ -26,7 +26,7 @@ async def test_a_128_step_ramp_stays_within_the_send_rate(fake_qu_factory) -> No
 
 
 async def test_the_keepalive_still_goes_out_while_the_queue_is_saturated(fake_qu_factory) -> None:  # type: ignore[no-untyped-def]
-    # PRD 16.14: liveness must never be starved by a bulk write.
+    # liveness must never be starved by a bulk write.
     fake = await fake_qu_factory(scene={(0x25, 0x17, 0x07): 0x7F})
     # AsyncQuMixer has no keepalive_interval kwarg of its own -- that setting
     # lives on the transport it drives, so a fast keepalive for this test

@@ -3,14 +3,14 @@
 
 Metering is the experimental corner of this library, for two honest reasons:
 the frame layout is model-specific and the Qu-24's is still unresolved
-(erratum 14.12), and meter frames arrive fast enough that decoding all of them
+(protocol note 12), and meter frames arrive fast enough that decoding all of them
 would dominate the client's cost. So frames are decoded lazily, only the slots
 you ask for are read, and a frame whose length does not match the computed
 layout disables metering rather than being delivered mis-indexed.
 
 Run it against the bundled fake console::
 
-    python -m qumidi.testing.fake_qu --port 51325 &
+    python -m qumixer_py.testing.fake_qu --port 51325 &
     python examples/meter_monitor.py --host 127.0.0.1 --once
 
 The bundled fake console emits no meter frames unless it was constructed with
@@ -24,7 +24,7 @@ import argparse
 import asyncio
 import contextlib
 
-from qumidi import AsyncQuMixer, Meter, MeterSlot, Mix
+from qumixer_py import AsyncQuMixer, Meter, MeterSlot, Mix
 
 
 def parse_args() -> argparse.Namespace:

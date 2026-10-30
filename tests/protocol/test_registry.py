@@ -2,8 +2,8 @@ import logging
 
 import pytest
 
-from qumidi.errors import ParameterRangeError, UnknownParameterError, UnsupportedOnModelError
-from qumidi.protocol.channels import (
+from qumixer_py.errors import ParameterRangeError, UnknownParameterError, UnsupportedOnModelError
+from qumixer_py.protocol.channels import (
     CAPS_BY_BOX_ID,
     ChannelClass,
     FxSend,
@@ -12,8 +12,8 @@ from qumidi.protocol.channels import (
     Matrix,
     Mix,
 )
-from qumidi.protocol.params import Fixed, SendTarget
-from qumidi.protocol.registry import (
+from qumixer_py.protocol.params import Fixed, SendTarget
+from qumixer_py.protocol.registry import (
     REGISTRY,
     SEND_TARGET_VX,
     VX_TO_SEND_TARGET,
@@ -33,13 +33,13 @@ from qumidi.protocol.registry import (
     ],
 )
 def test_the_single_canonical_send_target_table(target, vx) -> None:  # type: ignore[no-untyped-def]
-    # PRD 14.1: the spec contradicts itself; Pan and Pre/Post resolve it.
+    # the spec contradicts itself; Pan and Pre/Post resolve it.
     assert SEND_TARGET_VX[target] == vx
     assert VX_TO_SEND_TARGET[vx] == target
 
 
 def test_send_targets_are_not_a_dense_range() -> None:
-    # PRD 7.2: note the gap at 0E-0F. VX must come from the table by lookup,
+    # note the gap at 0E-0F. VX must come from the table by lookup,
     # never from arithmetic on a mix index.
     assert 0x0E not in VX_TO_SEND_TARGET
     assert 0x0F not in VX_TO_SEND_TARGET
@@ -80,7 +80,7 @@ def test_send_level_and_pan_use_the_send_target_vx_mode() -> None:
 
 
 def test_pan_is_bounded_at_4a_not_7f() -> None:
-    # PRD 14.9: centre is 0x25, not 0x40. Any code treating pan as a signed
+    # centre is 0x25, not 0x40. Any code treating pan as a signed
     # offset from 0x40 pans every channel hard left.
     domain = REGISTRY.lookup("pan").domain
     assert (domain.lo, domain.hi) == (0x00, 0x4A)  # type: ignore[attr-defined]
@@ -96,15 +96,15 @@ def test_resolve_returns_none_for_an_unknown_id() -> None:
 
 
 def test_resolve_falls_back_across_classes_with_a_debug_note(caplog) -> None:  # type: ignore[no-untyped-def]
-    # PRD 5.3 step 3.
-    with caplog.at_level(logging.DEBUG, logger="qumidi.protocol.registry"):
+    # Fallback across classes.
+    with caplog.at_level(logging.DEBUG, logger="qumixer_py.protocol.registry"):
         spec = REGISTRY.resolve(ChannelClass.MUTE_GROUP, 0x17, 0x07)
     assert spec is not None and spec.name == "fader"
     assert any("unexpected" in r.message.lower() for r in caplog.records)
 
 
 def test_resolve_warns_when_a_fixed_vx_does_not_match(caplog) -> None:  # type: ignore[no-untyped-def]
-    # PRD 5.3: this is the signature of a transcription error in the registry.
+    # this is the signature of a transcription error in the registry.
     with caplog.at_level(logging.WARNING):
         spec = REGISTRY.resolve(ChannelClass.INPUT, 0x17, 0x00)
     assert spec is not None and spec.name == "fader"
@@ -112,7 +112,7 @@ def test_resolve_warns_when_a_fixed_vx_does_not_match(caplog) -> None:  # type: 
 
 
 def test_lr_assign_and_mix_assign_are_distinct_entries() -> None:
-    # PRD 14.8: encode LR assignment exclusively as 18; 55/07 is rejected.
+    # encode LR assignment exclusively as 18; 55/07 is rejected.
     assert REGISTRY.lookup("lr_assign").nrpn_id == 0x18
     assert REGISTRY.lookup("mix_assign").nrpn_id == 0x55
 

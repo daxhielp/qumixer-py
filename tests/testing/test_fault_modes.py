@@ -2,8 +2,8 @@ import asyncio
 
 import pytest
 
-from qumidi.client_async import AsyncQuMixer
-from qumidi.protocol.channels import Input
+from qumixer_py.client_async import AsyncQuMixer
+from qumixer_py.protocol.channels import Input
 
 SCENE = {(0x25, 0x17, 0x07): 0x62, (0x26, 0x17, 0x07): 0x40}
 
@@ -25,7 +25,7 @@ async def test_survives_active_sensing_inside_a_sysex(fake_qu_factory) -> None: 
 
 
 async def test_survives_active_sensing_between_every_byte(fake_qu_factory) -> None:  # type: ignore[no-untyped-def]
-    # PRD 13.1: running-status NRPN bursts with FE inserted between every pair
+    # running-status NRPN bursts with FE inserted between every pair
     # of bytes. This is the case that breaks a naive NRPN decoder.
     fake = await fake_qu_factory(scene=SCENE, running_status=True, fe_between_every_byte=True)
     async with AsyncQuMixer("127.0.0.1", port=fake.port) as mixer:
@@ -49,7 +49,7 @@ async def test_survives_a_malformed_sysex(fake_qu_factory) -> None:  # type: ign
 
 
 async def test_a_second_state_reply_is_ignored(fake_qu_factory, caplog) -> None:  # type: ignore[no-untyped-def]
-    # PRD 9.3.10: log a warning naming both BoxIDs and bind to the first.
+    # log a warning naming both BoxIDs and bind to the first.
     fake = await fake_qu_factory(scene=SCENE, duplicate_state_reply=True)
     async with AsyncQuMixer("127.0.0.1", port=fake.port) as mixer:
         await mixer.wait_synced()
@@ -80,9 +80,9 @@ async def test_a_drop_mid_sync_is_survivable(fake_qu_factory) -> None:  # type: 
 
 
 async def test_partial_sync_ok_keeps_what_arrived(fake_qu_factory) -> None:  # type: ignore[no-untyped-def]
-    # PRD 9.3.9: keep whatever arrived, marked KNOWN, and proceed to READY
+    # keep whatever arrived, marked KNOWN, and proceed to READY
     # with a warning.
-    from qumidi.state import Freshness
+    from qumixer_py.state import Freshness
 
     fake = await fake_qu_factory(scene=SCENE, send_end_marker=False)
     async with AsyncQuMixer(

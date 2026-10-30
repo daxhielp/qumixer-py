@@ -1,10 +1,10 @@
 import pytest
 
-from qumidi.errors import ParameterRangeError
-from qumidi.protocol.channels import ChannelClass
-from qumidi.protocol.params import Fixed, FxTap, Tier
-from qumidi.protocol.registry import REGISTRY
-from qumidi.protocol.units import INPUT_DELAY_TAPER, MIX_DELAY_TAPER
+from qumixer_py.errors import ParameterRangeError
+from qumixer_py.protocol.channels import ChannelClass
+from qumixer_py.protocol.params import Fixed, FxTap, Tier
+from qumixer_py.protocol.registry import REGISTRY
+from qumixer_py.protocol.units import INPUT_DELAY_TAPER, MIX_DELAY_TAPER
 
 IDS = [
     ("gate.attack", 0x41, 0x07), ("gate.release", 0x42, 0x07),
@@ -37,7 +37,7 @@ def test_comp_type_enumerates_the_four_documented_modes() -> None:
 
 
 def test_delay_time_is_registered_twice_with_disjoint_classes() -> None:
-    # PRD 7.2: this is the one place a single parameter needs two domains.
+    # this is the one place a single parameter needs two domains.
     on_input = REGISTRY.lookup("delay_time", ChannelClass.INPUT)
     on_mix = REGISTRY.lookup("delay_time", ChannelClass.MIX_MONO)
     assert on_input is not on_mix
@@ -66,7 +66,7 @@ def test_receiving_an_over_range_input_delay_clamps_rather_than_raising(caplog) 
 
 
 def test_the_fx_delay_48_collision_resolves_on_vx() -> None:
-    # PRD 14.5: 48 is both coarse time and link, discriminated only by VX.
+    # 48 is both coarse time and link, discriminated only by VX.
     coarse = REGISTRY.resolve(ChannelClass.FX_SEND, 0x48, 0x05)
     link = REGISTRY.resolve(ChannelClass.FX_SEND, 0x48, 0x06)
     right = REGISTRY.resolve(ChannelClass.FX_SEND, 0x48, 0x07)

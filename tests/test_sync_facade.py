@@ -5,11 +5,11 @@ from typing import Any
 
 import pytest
 
-from qumidi.client_sync import QuMixer
-from qumidi.errors import NotSyncedError, ParameterRangeError
-from qumidi.protocol.channels import Input, Mix
-from qumidi.protocol.meters import LAYOUTS, Meter, MeterSlot
-from qumidi.protocol.strips import Strip, StripKey
+from qumixer_py.client_sync import QuMixer
+from qumixer_py.errors import NotSyncedError, ParameterRangeError
+from qumixer_py.protocol.channels import Input, Mix
+from qumixer_py.protocol.meters import LAYOUTS, Meter, MeterSlot
+from qumixer_py.protocol.strips import Strip, StripKey
 
 SCENE = {(0x25, 0x17, 0x07): 0x62}
 
@@ -35,7 +35,7 @@ def test_context_manager_and_basic_read(fake_qu_sync) -> None:  # type: ignore[n
 
 
 def test_property_setter_blocks_until_flushed(fake_qu_sync) -> None:  # type: ignore[no-untyped-def]
-    # PRD 11.2: the setter blocks until the write is flushed, the same
+    # the setter blocks until the write is flushed, the same
     # guarantee as await in the async API. It does not return early.
     with QuMixer("127.0.0.1", port=fake_qu_sync.port) as mixer:
         mixer.wait_synced()
@@ -69,7 +69,7 @@ def test_explicit_set_methods_exist_alongside_the_properties(fake_qu_sync) -> No
 
 
 def test_the_two_apis_expose_the_same_method_names(fake_qu_sync) -> None:  # type: ignore[no-untyped-def]
-    # PRD 11.2: the sync facade is the async one minus await, generated from
+    # the sync facade is the async one minus await, generated from
     # the same registry, never a hand-maintained parallel surface.
     #
     # Class-level dir() alone is not enough, and that gap is exactly what let
@@ -77,7 +77,7 @@ def test_the_two_apis_expose_the_same_method_names(fake_qu_sync) -> None:  # typ
     # entries in its __dict__ (and its bases'), never an attribute the async
     # mixer sets in __init__. So this checks both levels -- classes, and two
     # live, fully-synced instances.
-    from qumidi.client_async import AsyncQuMixer
+    from qumixer_py.client_async import AsyncQuMixer
 
     async_names = {n for n in dir(AsyncQuMixer) if not n.startswith("_")}
     sync_names = {n for n in dir(QuMixer) if not n.startswith("_")}
@@ -148,8 +148,8 @@ def test_a_loop_thread_callback_calling_an_explicit_method_raises_not_hangs(  # 
     fake_qu_sync,
 ) -> None:
     # Regression: with thread_safe=False (the default), on_change callbacks
-    # run inline on the mixer's own loop thread (PRD 11.2). A callback that
-    # then calls an *explicit* proxied method -- e.g. the brief's own
+    # run inline on the mixer's own loop thread. A callback that
+    # then calls an *explicit* proxied method -- e.g. the obvious
     # recommended `fader.set_db(...)` form, not just the `.db =` sugar --
     # used to hang forever: QuMixer._run would submit a coroutine to the
     # loop and block waiting for it, but the loop thread doing the waiting
@@ -181,7 +181,7 @@ def test_a_loop_thread_callback_calling_an_explicit_method_raises_not_hangs(  # 
 
 
 def test_concurrent_close_calls_are_safe(fake_qu_sync) -> None:  # type: ignore[no-untyped-def]
-    # PRD 11.2: close() must be safe to call from multiple threads at once,
+    # close() must be safe to call from multiple threads at once,
     # not just safe to call twice in sequence -- a naive
     # "if self._closed: return; ...; self._closed = True" is a TOCTOU that
     # lets two concurrent callers both pass the guard before either sets it.
@@ -212,8 +212,8 @@ def test_concurrent_close_calls_are_safe(fake_qu_sync) -> None:  # type: ignore[
 #
 # The dir()-based guard above compares *names*. It cannot, by construction,
 # catch a name that IS present but hands back something a synchronous caller
-# can only misuse -- which is precisely how mixer.meters (Slice 10) and
-# mixer.strips (Slice 11) shipped unwrapped: both are instance attributes, so
+# can only misuse -- which is precisely how mixer.meters and
+# mixer.strips shipped unwrapped: both are instance attributes, so
 # they arrived through QuMixer.__getattr__ and, with their modules missing
 # from _FACADE_MODULES, were returned raw. mixer.meters.enable() then handed
 # back a live coroutine that nothing ever awaited: a silent no-op.
@@ -273,7 +273,7 @@ def _walk(obj: Any, path: str, seen: set[type], offences: list[str], depth: int 
             continue
         target = _unwrap(value)
         cls = type(target)
-        if not cls.__module__.startswith("qumidi.") or cls in seen:
+        if not cls.__module__.startswith("qumixer_py.") or cls in seen:
             continue
         seen.add(cls)
         _walk(value, f"{path}.{name}", seen, offences, depth + 1)
@@ -295,12 +295,12 @@ def test_nothing_reachable_hands_back_an_unawaited_coroutine(fake_qu_sync) -> No
 
 def test_the_structural_guard_actually_detects_an_unwrapped_sub_api(fake_qu_sync) -> None:  # type: ignore[no-untyped-def]
     # A guard that cannot fail is not a guard. Re-run the same walk with
-    # qumidi.meters removed from _FACADE_MODULES -- i.e. the exact state the
+    # qumixer_py.meters removed from _FACADE_MODULES -- i.e. the exact state the
     # code was in before this fix -- and assert it reports the sub-API.
-    from qumidi import client_sync
+    from qumixer_py import client_sync
 
     original = client_sync._FACADE_MODULES
-    client_sync._FACADE_MODULES = original - {"qumidi.meters"}
+    client_sync._FACADE_MODULES = original - {"qumixer_py.meters"}
     try:
         with QuMixer("127.0.0.1", port=fake_qu_sync.port) as mixer:
             mixer.wait_synced()
@@ -311,7 +311,7 @@ def test_the_structural_guard_actually_detects_an_unwrapped_sub_api(fake_qu_sync
     assert any("mixer.meters.enable" in o for o in offences), offences
 
 
-# -- metering from the sync facade (PRD 12) ------------------------------------
+# -- metering from the sync facade ------------------------------------
 
 
 def test_meters_enable_and_disable_block_and_reach_the_console(fake_qu_sync) -> None:  # type: ignore[no-untyped-def]
@@ -356,7 +356,7 @@ def test_meters_enabled_is_a_real_synchronous_context_manager(fake_qu_sync) -> N
 
 
 def test_meters_enabled_disables_on_an_exception_path(fake_qu_sync) -> None:  # type: ignore[no-untyped-def]
-    # PRD 12: the whole point of the context manager is that a firehose
+    # the whole point of the context manager is that a firehose
     # cannot be left running by accident. The synchronous equivalent has to
     # keep that guarantee, and must let the exception through unchanged.
     with QuMixer("127.0.0.1", port=fake_qu_sync.port) as mixer:
@@ -422,11 +422,11 @@ def test_meters_stream_closes_cleanly_after_the_mixer_does(fake_qu_sync_factory)
 
 
 def test_on_meter_layout_error_honours_thread_safe(fake_qu_sync_factory) -> None:  # type: ignore[no-untyped-def]
-    # PRD 11.2: every mixer-level on_* registration must marshal onto the
+    # every mixer-level on_* registration must marshal onto the
     # caller's thread under thread_safe=True. on_meter_layout_error was the
     # one event with no mixer-level wrapper, so it always fired inline on the
     # loop thread. A 100-byte frame cannot match any layout, so the client
-    # force-disables metering and emits the event (PRD 12.2).
+    # force-disables metering and emits the event.
     fake = fake_qu_sync_factory(model="qu32", meter_frames=[bytes(100)], meter_rate=50.0)
     with QuMixer("127.0.0.1", port=fake.port, thread_safe=True) as mixer:
         mixer.wait_synced()
@@ -441,7 +441,7 @@ def test_on_meter_layout_error_honours_thread_safe(fake_qu_sync_factory) -> None
         assert mixer.meters.enable_count == 0
 
 
-# -- MIDI strips from the sync facade (PRD 7.2, 14.7) --------------------------
+# -- MIDI strips from the sync facade --------------------------
 
 
 def test_strip_writes_block_and_reach_the_console(fake_qu_sync) -> None:  # type: ignore[no-untyped-def]
@@ -455,7 +455,7 @@ def test_strip_writes_block_and_reach_the_console(fake_qu_sync) -> None:  # type
         time.sleep(0.1)
         seen = bytes(fake_qu_sync.received)
     # Strip traffic lives on channel N+1, a namespace entirely separate from
-    # the console's own channel N (PRD 6.3, 14.7).
+    # the console's own channel N.
     assert bytes([0xB0 | (n + 1), 0x02, 0x40]) in seen
     assert bytes([0x90 | (n + 1), 0x02, 0x7F]) in seen
     assert bytes([0x80 | (n + 1), 0x02, 0x00]) in seen

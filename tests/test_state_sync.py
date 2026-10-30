@@ -2,14 +2,14 @@ import asyncio
 
 import pytest
 
-import qumidi.client_async as client_async_module
-from qumidi.client_async import AsyncQuMixer
-from qumidi.errors import ValueUnknownError
-from qumidi.events import Source
-from qumidi.protocol.channels import ChannelClass, Input, Mix
-from qumidi.protocol.params import Fixed, FlaggedIndex, ParamSpec
-from qumidi.protocol.registry import REGISTRY, Registry
-from qumidi.state import Freshness
+import qumixer_py.client_async as client_async_module
+from qumixer_py.client_async import AsyncQuMixer
+from qumixer_py.errors import ValueUnknownError
+from qumixer_py.events import Source
+from qumixer_py.protocol.channels import ChannelClass, Input, Mix
+from qumixer_py.protocol.params import Fixed, FlaggedIndex, ParamSpec
+from qumixer_py.protocol.registry import REGISTRY, Registry
+from qumixer_py.state import Freshness
 
 SCENE = {
     (0x25, 0x17, 0x07): 0x62,   # Input 6 fader, 0 dB
@@ -29,7 +29,7 @@ async def test_the_state_burst_populates_the_cache(fake_qu_factory) -> None:  # 
 
 
 async def test_the_last_parameter_of_the_burst_is_not_lost(fake_qu_factory) -> None:  # type: ignore[no-untyped-def]
-    # PRD 9.3.7: flush the NRPN decoder's held update when 14 arrives, or the
+    # flush the NRPN decoder's held update when 14 arrives, or the
     # cache is silently one value short after every sync.
     fake = await fake_qu_factory(scene=SCENE, drop_last_vx=True)
     async with AsyncQuMixer("127.0.0.1", port=fake.port) as mixer:
@@ -38,7 +38,7 @@ async def test_the_last_parameter_of_the_burst_is_not_lost(fake_qu_factory) -> N
 
 
 async def test_sync_emits_one_sync_complete_and_no_external_changes(fake_qu_factory) -> None:  # type: ignore[no-untyped-def]
-    # PRD 9.3.4: do not emit external-change events for the burst; emit a
+    # do not emit external-change events for the burst; emit a
     # single SyncComplete at the end.
     fake = await fake_qu_factory(scene=SCENE)
     external: list[object] = []
@@ -53,7 +53,7 @@ async def test_sync_emits_one_sync_complete_and_no_external_changes(fake_qu_fact
 
 
 async def test_sync_complete_fires_after_the_name_sweep(fake_qu_factory) -> None:  # type: ignore[no-untyped-def]
-    # PRD 9.4/9.3.8: SyncComplete means "everything -- values and names -- is
+    # SyncComplete means "everything -- values and names -- is
     # trustworthy again", so it must fire only once the name sweep has
     # already populated mixer.name(...), not at the wire-level end-of-sync
     # marker (which lands before the sweep even starts).
@@ -77,7 +77,7 @@ async def test_sync_sourced_changes_are_still_visible_to_subscribers(fake_qu_fac
 
 
 async def test_a_surface_move_after_sync_fires_an_external_change(fake_qu_factory) -> None:  # type: ignore[no-untyped-def]
-    # PRD 16.3.
+    #.
     fake = await fake_qu_factory(scene=SCENE)
     seen: list[object] = []
     mixer = AsyncQuMixer("127.0.0.1", port=fake.port)
@@ -91,7 +91,7 @@ async def test_a_surface_move_after_sync_fires_an_external_change(fake_qu_factor
 
 
 async def test_an_unknown_parameter_id_does_not_break_the_read_loop(fake_qu_factory) -> None:  # type: ignore[no-untyped-def]
-    # PRD 5.3: an unrecognised (CH, ID) must not raise. Undocumented
+    # an unrecognised (CH, ID) must not raise. Undocumented
     # parameters exist.
     fake = await fake_qu_factory(scene=SCENE)
     async with AsyncQuMixer("127.0.0.1", port=fake.port) as mixer:
@@ -104,7 +104,7 @@ async def test_an_unknown_parameter_id_does_not_break_the_read_loop(fake_qu_fact
 
 
 async def test_refresh_is_documented_as_a_full_resync(fake_qu_factory) -> None:  # type: ignore[no-untyped-def]
-    # PRD 10.2: no targeted get exists in the protocol.
+    # no targeted get exists in the protocol.
     fake = await fake_qu_factory(scene=SCENE)
     async with AsyncQuMixer("127.0.0.1", port=fake.port) as mixer:
         await mixer.wait_synced()
@@ -123,9 +123,9 @@ async def test_reading_an_unknown_value_returns_unknown_not_a_number(fake_qu_fac
 
 
 async def test_membership_of_a_partially_known_dca_set_raises(fake_qu_factory, monkeypatch) -> None:  # type: ignore[no-untyped-def]
-    # NOTE: dca_assign is not yet a REGISTRY row -- task 3.4 deliberately
-    # seeded the registry with the level/pan/routing family only and left
-    # DCA/mute-group assign for Slice 5 (see task-3.4-brief.md). Rather than
+    # NOTE: dca_assign is not yet a REGISTRY row -- the registry was
+    # seeded with the level/pan/routing family only and left
+    # DCA/mute-group assign out. Rather than
     # add a production registry entry out of scope for this task (an
     # unverified NRPN transcription with no golden-vector coverage), this
     # test wires in a local, test-only FlaggedIndex spec so it still
@@ -147,9 +147,9 @@ async def test_membership_of_a_partially_known_dca_set_raises(fake_qu_factory, m
 
 
 async def test_an_inbound_5507_normalises_onto_the_lr_assign_key(fake_qu_factory) -> None:  # type: ignore[no-untyped-def]
-    # PRD 14.8: 55/07 is a syntactically valid second encoding for LR assign.
+    # 55/07 is a syntactically valid second encoding for LR assign.
     # set() refuses to emit it, but the console may still speak it (which of
-    # the two it uses is an M6 open question), so an inbound 55/07 must land on
+    # the two it uses is an open hardware question), so an inbound 55/07 must land on
     # the same cache key that an inbound 18/07 does -- not in a parallel
     # mix_assign slot that nothing reads.
     fake = await fake_qu_factory(scene={})
@@ -162,7 +162,7 @@ async def test_an_inbound_5507_normalises_onto_the_lr_assign_key(fake_qu_factory
 
 
 async def test_an_inbound_mix_assign_to_a_real_mix_is_left_alone(fake_qu_factory) -> None:  # type: ignore[no-untyped-def]
-    # The 14.8 normalisation must be surgical: only VX 07 is the LR alias.
+    # The LR-alias normalisation must be surgical: only VX 07 is the LR alias.
     fake = await fake_qu_factory(scene={})
     async with AsyncQuMixer("127.0.0.1", port=fake.port) as mixer:
         await mixer.wait_synced()

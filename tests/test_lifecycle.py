@@ -2,17 +2,17 @@ import asyncio
 
 import pytest
 
-from qumidi.client_async import AsyncQuMixer
-from qumidi.errors import QuConnectionLostError
-from qumidi.protocol.channels import Input
-from qumidi.state import Freshness
-from qumidi.transport.base import ConnectionState
+from qumixer_py.client_async import AsyncQuMixer
+from qumixer_py.errors import QuConnectionLostError
+from qumixer_py.protocol.channels import Input
+from qumixer_py.state import Freshness
+from qumixer_py.transport.base import ConnectionState
 
 SCENE = {(0x25, 0x17, 0x07): 0x62}
 
 
 async def test_a_drop_marks_the_whole_cache_stale(fake_qu_factory) -> None:  # type: ignore[no-untyped-def]
-    # PRD 4.4 and 16.4: never serve pre-disconnect values as current.
+    # never serve pre-disconnect values as current.
     fake = await fake_qu_factory(scene=SCENE)
     seen_stale = asyncio.Event()
     async with AsyncQuMixer(
@@ -45,9 +45,9 @@ async def test_reconnect_re_syncs_and_returns_to_ready(fake_qu_factory) -> None:
 
 
 async def test_pending_expectations_are_dropped_on_disconnect(fake_qu_factory) -> None:  # type: ignore[no-untyped-def]
-    # PRD 4.4: leaving expectations live causes the first post-reconnect
+    # leaving expectations live causes the first post-reconnect
     # surface move to be misclassified as an echo and swallowed.
-    from qumidi.events import Source
+    from qumixer_py.events import Source
 
     fake = await fake_qu_factory(scene=SCENE, echo=False)
     external: list[object] = []
@@ -68,7 +68,7 @@ async def test_pending_expectations_are_dropped_on_disconnect(fake_qu_factory) -
 
 
 async def test_box_id_and_channel_are_relearned_not_cached(fake_qu_factory) -> None:  # type: ignore[no-untyped-def]
-    # PRD 4.4: the operator may have changed the console's MIDI channel, or
+    # the operator may have changed the console's MIDI channel, or
     # the host may now be a different console at the same IP.
     fake = await fake_qu_factory(scene=SCENE, midi_channel=0)
     async with AsyncQuMixer(
@@ -129,7 +129,7 @@ async def test_a_write_after_an_unrecoverable_drop_raises(fake_qu_factory) -> No
 
 
 async def test_the_client_leaks_nothing_on_close(fake_qu_factory) -> None:  # type: ignore[no-untyped-def]
-    # PRD 13.4: assert with asyncio.all_tasks() at teardown.
+    # assert with asyncio.all_tasks() at teardown.
     fake = await fake_qu_factory(scene=SCENE)
     before = {t for t in asyncio.all_tasks()}
     async with AsyncQuMixer("127.0.0.1", port=fake.port) as mixer:
@@ -141,8 +141,7 @@ async def test_the_client_leaks_nothing_on_close(fake_qu_factory) -> None:  # ty
 
 
 async def test_set_during_post_reconnect_sync_does_not_race(fake_qu_factory) -> None:  # type: ignore[no-untyped-def]
-    # Carried forward from Task 4.3's finding (see task-4.3-report.md) into
-    # Task 8.1's dispatch context: _await_channel unblocks a set() as soon as
+    # _await_channel unblocks a set() as soon as
     # the `11` reply sets _midi_channel, which happens early in _sync()'s
     # burst -- well before _syncing goes back to False at the `14` marker.
     # _after_reconnect() calls _sync() automatically and unprompted, so any

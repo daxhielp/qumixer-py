@@ -2,9 +2,9 @@ import asyncio
 
 import pytest
 
-from qumidi.client_async import AsyncQuMixer
-from qumidi.errors import ParameterRangeError
-from qumidi.protocol.channels import Dca, Input, Mix
+from qumixer_py.client_async import AsyncQuMixer
+from qumixer_py.errors import ParameterRangeError
+from qumixer_py.protocol.channels import Dca, Input, Mix
 
 
 async def test_names_arrive_after_sync(fake_qu_factory) -> None:  # type: ignore[no-untyped-def]
@@ -16,7 +16,7 @@ async def test_names_arrive_after_sync(fake_qu_factory) -> None:  # type: ignore
 
 
 async def test_a_channel_with_no_name_is_none_not_a_sentinel_string(fake_qu_factory) -> None:  # type: ignore[no-untyped-def]
-    # PRD 9.4: a channel can legitimately be *named* "UNKNOWN".
+    # a channel can legitimately be *named* "UNKNOWN".
     fake = await fake_qu_factory(names={0x25: "Kick"}, name_silent={0x26})
     async with AsyncQuMixer(
         "127.0.0.1", port=fake.port, name_request_timeout=0.05, name_request_retries=1
@@ -26,7 +26,7 @@ async def test_a_channel_with_no_name_is_none_not_a_sentinel_string(fake_qu_fact
 
 
 async def test_the_sweep_is_paced(fake_qu_factory) -> None:  # type: ignore[no-untyped-def]
-    # PRD 9.4: do not fire 100 sysex requests at once.
+    # do not fire 100 sysex requests at once.
     fake = await fake_qu_factory(model="qu16", names={})
     started = asyncio.get_running_loop().time()
     async with AsyncQuMixer(
@@ -48,7 +48,7 @@ async def test_the_sweep_covers_only_channels_the_model_has(fake_qu_factory) -> 
 
 
 async def test_the_sweep_skips_classes_that_have_no_names(fake_qu_factory) -> None:  # type: ignore[no-untyped-def]
-    # PRD 9.4: driven by an explicit NAMEABLE_CLASSES set.
+    # driven by an explicit NAMEABLE_CLASSES set.
     fake = await fake_qu_factory(names={})
     async with AsyncQuMixer("127.0.0.1", port=fake.port) as mixer:
         await mixer.wait_synced()
@@ -64,7 +64,7 @@ async def test_sync_names_false_skips_the_sweep_entirely(fake_qu_factory) -> Non
 
 
 async def test_set_name_round_trips_and_is_verified(fake_qu_factory) -> None:  # type: ignore[no-untyped-def]
-    # PRD 9.4: a 03 name-set is not acknowledged; confirm with a 01 get.
+    # a 03 name-set is not acknowledged; confirm with a 01 get.
     fake = await fake_qu_factory(names={0x25: "Kick"})
     async with AsyncQuMixer("127.0.0.1", port=fake.port) as mixer:
         await mixer.wait_synced()

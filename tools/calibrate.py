@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
-"""Sweep a parameter and record what the console displays (PRD 8.4, 13.5).
+"""Sweep a parameter and record what the console displays.
 
 The spec gives endpoints only for frequencies, widths and the gate/compressor
 times, so those tapers ship as best-effort log interpolations marked
-unverified (see ``qumidi.protocol.units.log_taper``). This tool replaces them
+unverified (see ``qumixer_py.protocol.units.log_taper``). This tool replaces them
 with measured ones: it sweeps raw 0x00-0x7F on real hardware, pauses at each
 step for an operator to read the console's display, and emits a ``Taper(...)``
-literal ready to paste into ``qumidi/protocol/units.py`` with
+literal ready to paste into ``qumixer_py/protocol/units.py`` with
 ``verified=True``.
 
 This is an interactive, hardware-only operator tool. It lives outside the
-``qumidi`` package (no runtime dependency on it, no --strict mypy coverage)
+``qumixer_py`` package (no runtime dependency on it, no --strict mypy coverage)
 because it is a one-off calibration instrument, not library code.
 
 Usage:
@@ -26,9 +26,9 @@ import argparse
 import asyncio
 import sys
 
-from qumidi.client_async import AsyncQuMixer
-from qumidi.errors import QuError
-from qumidi.protocol.channels import parse_channel_ref
+from qumixer_py.client_async import AsyncQuMixer
+from qumixer_py.errors import QuError
+from qumixer_py.protocol.channels import parse_channel_ref
 
 
 def format_taper_source(

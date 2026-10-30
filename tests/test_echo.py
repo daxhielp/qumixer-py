@@ -2,15 +2,15 @@ import asyncio
 
 import pytest
 
-from qumidi.client_async import AsyncQuMixer
-from qumidi.events import Source
-from qumidi.protocol.channels import Input
-from qumidi.state import Freshness
+from qumixer_py.client_async import AsyncQuMixer
+from qumixer_py.events import Source
+from qumixer_py.protocol.channels import Input
+from qumixer_py.state import Freshness
 
 
 @pytest.mark.parametrize("echo", [True, False])
 async def test_a_write_never_fires_external_change(fake_qu_factory, echo) -> None:  # type: ignore[no-untyped-def]
-    # PRD 16.3 and 10.3: a fader set via the API does not fire external_change,
+    # a fader set via the API does not fire external_change,
     # whether or not the console echoes. Both must be exercised, because
     # whether the Qu echoes at all is unverified.
     fake = await fake_qu_factory(echo=echo)
@@ -35,7 +35,7 @@ async def test_an_echo_confirms_the_optimistic_value(fake_qu_factory) -> None:  
 
 
 async def test_an_unmatched_expectation_downgrades_to_unconfirmed(fake_qu_factory) -> None:  # type: ignore[no-untyped-def]
-    # PRD 16.11: the library never reports a value as KNOWN on the strength of
+    # the library never reports a value as KNOWN on the strength of
     # its own optimistic write alone.
     fake = await fake_qu_factory(echo=False)
     unconfirmed: list[tuple[object, str, object]] = []
@@ -51,7 +51,7 @@ async def test_an_unmatched_expectation_downgrades_to_unconfirmed(fake_qu_factor
 
 
 async def test_duplicate_expectations_are_consumed_fifo(fake_qu_factory) -> None:  # type: ignore[no-untyped-def]
-    # PRD 10.3: two writes of the same value produce two expectations and
+    # two writes of the same value produce two expectations and
     # possibly one echo. Match one echo per expectation.
     fake = await fake_qu_factory(echo=False)
     external: list[object] = []

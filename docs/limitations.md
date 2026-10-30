@@ -14,7 +14,7 @@ which layer is currently selected.
 When an operator moves a physical fader, the console transmits the *channel's*
 identity, not the strip that was touched. A listener therefore always knows
 which channel changed and can never know which strip was moved. `SurfaceMap`
-in `qumidi.layout` lets you supply a mapping by hand; the library cannot
+in `qumixer_py.layout` lets you supply a mapping by hand; the library cannot
 validate it, and a scene recall can change the console's custom layer without
 any notification. `mixer.register_surface_map(...)` makes the library
 invalidate a registered map when *this client* recalls a scene — a recall made
@@ -63,7 +63,7 @@ single most common support question.
 
 ## No USB transport in v1
 
-The `Transport` interface in `qumidi.transport.base` accommodates one, and the
+The `Transport` interface in `qumixer_py.transport.base` accommodates one, and the
 `usb` extra reserves the dependencies; there is no implementation. `TcpTransport`
 is the only transport that ships.
 
@@ -108,7 +108,7 @@ channel identity.
 
 Meters are identity-addressed like everything else, and the frame layout is
 model-specific. The Qu-24 layout is still unresolved between two candidates
-(see [`docs/protocol-notes.md`](protocol-notes.md), erratum 14.12); the library
+(see [`docs/protocol-notes.md`](protocol-notes.md), protocol note 12); the library
 validates every frame's length against the computed layout, and on a mismatch
 it disables metering and fires `on_meter_layout_error` with a diagnostic
 rather than delivering mis-indexed data. `mixer.meters.stream()` never yields
@@ -124,7 +124,7 @@ best-effort interpolations and are marked as unverified in
 [`docs/tiers.md`](tiers.md). `.raw` is always exact.
 
 No parameter is at `Tier.VERIFIED` in this release: hardware verification
-(PRD M6) has not been run. See `docs/tiers.md` for the full list and for the
+ has not been run. See `docs/tiers.md` for the full list and for the
 open questions that a hardware run would close.
 
 ## No access control

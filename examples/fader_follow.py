@@ -8,7 +8,7 @@ into a feedback loop that ramps a fader into the ceiling.
 
 Run it against the bundled fake console::
 
-    python -m qumidi.testing.fake_qu --port 51325 &
+    python -m qumixer_py.testing.fake_qu --port 51325 &
     python examples/fader_follow.py --host 127.0.0.1 --once
 
 `--once` watches for a couple of seconds and exits, which is what the test
@@ -21,7 +21,7 @@ import argparse
 import asyncio
 import contextlib
 
-from qumidi import AsyncQuMixer, ChangeEvent, Input, Source
+from qumixer_py import AsyncQuMixer, ChangeEvent, Input, Source
 
 
 def parse_args() -> argparse.Namespace:

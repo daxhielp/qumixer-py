@@ -1,4 +1,4 @@
-"""Coverage for `qumidi record`/`qumidi replay` and `FakeQu(replay=...)` (PRD 13.1, 13.5).
+"""Coverage for `qumixer-py record`/`qumixer-py replay` and `FakeQu(replay=...)`.
 
 Recording every hardware session and committing the captures makes them the
 regression corpus -- record captures the raw inbound byte stream to a file,
@@ -10,9 +10,9 @@ from __future__ import annotations
 
 import asyncio
 
-from qumidi.cli import main
-from qumidi.client_async import AsyncQuMixer
-from qumidi.protocol.channels import Input
+from qumixer_py.cli import main
+from qumixer_py.client_async import AsyncQuMixer
+from qumixer_py.protocol.channels import Input
 
 
 async def test_record_captures_inbound_bytes(fake_qu_factory, tmp_path) -> None:  # type: ignore[no-untyped-def]
@@ -31,10 +31,10 @@ async def test_record_captures_inbound_bytes(fake_qu_factory, tmp_path) -> None:
 
 
 async def test_record_frames_stops_after_n_meter_frames(fake_qu_factory, tmp_path) -> None:  # type: ignore[no-untyped-def]
-    # PRD 13.5: --frames lets a user capture exactly the meter frames needed
+    # --frames lets a user capture exactly the meter frames needed
     # to derive a corrected layout, rather than guessing at --seconds.
-    from qumidi.protocol import constants as c
-    from qumidi.protocol.meters import LAYOUTS, Meter, MeterSlot
+    from qumixer_py.protocol import constants as c
+    from qumixer_py.protocol.meters import LAYOUTS, Meter, MeterSlot
 
     def frame_for(model: str, slot: MeterSlot, raw_u16: int) -> bytes:
         layout = LAYOUTS[model]
@@ -69,11 +69,11 @@ async def test_record_frames_stops_after_n_meter_frames(fake_qu_factory, tmp_pat
 
 
 async def test_replay_feeds_a_capture_through_fake_qu(fake_qu_factory, tmp_path) -> None:  # type: ignore[no-untyped-def]
-    # PRD 13.1: replay mode lets CI regress against real traffic shapes.
-    from qumidi.midi.nrpn import encode_nrpn
-    from qumidi.protocol import constants as c
-    from qumidi.protocol.sysex import build_sysex
-    from qumidi.testing.fake_qu import FakeQu
+    # replay mode lets CI regress against real traffic shapes.
+    from qumixer_py.midi.nrpn import encode_nrpn
+    from qumixer_py.protocol import constants as c
+    from qumixer_py.protocol.sysex import build_sysex
+    from qumixer_py.testing.fake_qu import FakeQu
 
     capture = tmp_path / "capture.bin"
     capture.write_bytes(

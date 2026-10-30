@@ -2,7 +2,7 @@ import math
 
 import pytest
 
-from qumidi.protocol.units import (
+from qumixer_py.protocol.units import (
     COMP_RATIO_TAPER,
     DSNAKE_GAIN_TAPER,
     FADER_TAPER,
@@ -18,7 +18,7 @@ from qumidi.protocol.units import (
     log_taper,
 )
 
-# PRD 8.1, transcribed from the spec table.
+#, transcribed from the spec table.
 FADER_ANCHORS = [
     (10.0, 0x7F), (5.0, 0x72), (0.0, 0x62), (-5.0, 0x4F), (-10.0, 0x3F),
     (-15.0, 0x36), (-20.0, 0x2F), (-25.0, 0x27), (-30.0, 0x1F), (-35.0, 0x17),
@@ -33,7 +33,7 @@ def test_every_anchor_point_is_exact_in_both_directions(db, raw) -> None:  # typ
 
 
 def test_raw_zero_is_a_discrete_minus_infinity() -> None:
-    # PRD 8.1: 00 is a discrete -inf, not a point on the curve. Do not
+    # 00 is a discrete -inf, not a point on the curve. Do not
     # interpolate between 00 and 0C.
     assert FADER_TAPER.to_db(0x00) == -math.inf
 
@@ -46,7 +46,7 @@ def test_anything_below_minus_45_db_maps_to_raw_zero() -> None:
 
 @pytest.mark.parametrize("raw", list(range(0x01, 0x0C)))
 def test_the_undefined_band_extrapolates_rather_than_returning_minus_inf(raw) -> None:  # type: ignore[no-untyped-def]
-    # PRD 8.1: the console sends these -- the physical fader passes through
+    # the console sends these -- the physical fader passes through
     # them. Do not return -inf (raw 0B and raw 00 must stay distinguishable).
     db = FADER_TAPER.to_db(raw)
     assert math.isfinite(db)
@@ -68,7 +68,7 @@ def test_the_extrapolation_is_floored_at_minus_60() -> None:
 
 @pytest.mark.parametrize("raw", list(range(0x01, 0x0C)))
 def test_raw_to_db_to_raw_is_deliberately_not_an_identity_in_the_band(raw) -> None:  # type: ignore[no-untyped-def]
-    # PRD 8.1: the inverse is not surjective onto this band, and this
+    # the inverse is not surjective onto this band, and this
     # asymmetry must be asserted rather than a round trip that cannot hold.
     assert FADER_TAPER.to_raw(FADER_TAPER.to_db(raw)) == 0x00
 
@@ -84,7 +84,7 @@ def test_the_taper_is_monotonic_across_the_whole_range() -> None:
 
 
 def test_db_round_trips_within_half_a_db() -> None:
-    # PRD 8: .db is documented as approximate, ~+-0.5 dB.
+    # .db is documented as approximate, ~+-0.5 dB.
     for db in [x / 2 for x in range(-90, 21)]:
         raw = FADER_TAPER.to_raw(db)
         if raw == 0x00:
@@ -97,7 +97,7 @@ def test_to_raw_clamps_above_the_top_anchor() -> None:
 
 
 def test_linear_taper_with_an_asymmetric_centre() -> None:
-    # PRD 8.4: 00-7F is 128 steps around a centre of 40, so the span is
+    # 00-7F is 128 steps around a centre of 40, so the span is
     # asymmetric -- 64 steps below zero and 63 above. Anchor on 40 = 0 dB and
     # do not assume +24 dB lands exactly on 7F by symmetry.
     trim = linear_taper(-24.0, 24.0, centre_raw=0x40)
@@ -145,7 +145,7 @@ def test_dsnake_preamp_gain_anchors(db, raw) -> None:  # type: ignore[no-untyped
 
 
 def test_the_two_preamp_curves_are_different() -> None:
-    # PRD 8.3: do not share the table with 8.2.
+    # do not share the table with 8.2.
     assert LOCAL_GAIN_TAPER.points != DSNAKE_GAIN_TAPER.points
     assert LOCAL_GAIN_TAPER.to_db(0x50) != DSNAKE_GAIN_TAPER.to_db(0x50)
 
@@ -165,7 +165,7 @@ def test_trim_and_peq_gain_are_centred_on_0x40() -> None:
 
 
 def test_accurate_linear_tapers_are_marked_verified() -> None:
-    # PRD 8.4: trim, PEQ/GEQ gain and the delay tapers are stated as linear
+    # trim, PEQ/GEQ gain and the delay tapers are stated as linear
     # in the spec, not endpoint-only guesses -- they must not be lumped in
     # with the genuinely unverified log-interpolated curves.
     for taper in (
@@ -179,7 +179,7 @@ def test_accurate_linear_tapers_are_marked_verified() -> None:
 
 
 def test_input_delay_is_half_scale_against_mix_delay() -> None:
-    # PRD 7.2: the input-channel range is half-scale, or the ms helper is
+    # the input-channel range is half-scale, or the ms helper is
     # wrong by 2x on inputs.
     assert INPUT_DELAY_TAPER.to_db(0x40) == pytest.approx(85.0)
     assert MIX_DELAY_TAPER.to_db(0x7F) == pytest.approx(170.0)
@@ -196,7 +196,7 @@ def test_log_taper_is_monotonic_and_hits_its_endpoints() -> None:
 
 
 def test_frequency_taper_is_documented_as_unverified() -> None:
-    # PRD 8.4: expose .raw as primary; the helpers are marked clearly as
+    # expose .raw as primary; the helpers are marked clearly as
     # unverified and are prime candidates for hardware calibration.
     #
     # NOTE: `FREQ_TAPER` is a `Taper` *instance* that does not set its own
@@ -211,5 +211,5 @@ def test_frequency_taper_is_documented_as_unverified() -> None:
 
 
 def test_comp_ratio_reference_point() -> None:
-    # PRD 7.2 gives one interior anchor: 2.6:1 = 0x50.
+    # The spec gives one interior anchor: 2.6:1 = 0x50.
     assert COMP_RATIO_TAPER.to_db(0x50) == pytest.approx(2.6, abs=0.05)

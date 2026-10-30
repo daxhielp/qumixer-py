@@ -2,10 +2,10 @@ import json
 
 import pytest
 
-from qumidi.client_async import AsyncQuMixer
-from qumidi.protocol.channels import GLOBAL, Input, dsnake_socket_channel
-from qumidi.snapshot import build_snapshot, diff_snapshot, load_snapshot
-from qumidi.state import Freshness, StateCache
+from qumixer_py.client_async import AsyncQuMixer
+from qumixer_py.protocol.channels import GLOBAL, Input, dsnake_socket_channel
+from qumixer_py.snapshot import build_snapshot, diff_snapshot, load_snapshot
+from qumixer_py.state import Freshness, StateCache
 
 SCENE = {(0x25, 0x17, 0x07): 0x62, (0x25, 0x20, 0x02): 0x50}
 
@@ -26,7 +26,7 @@ async def test_snapshot_is_json_serialisable_and_carries_identity(fake_qu_factor
 async def test_snapshot_reports_a_currently_unnamed_channel_as_null_not_omitted(  # type: ignore[no-untyped-def]
     fake_qu_factory,
 ) -> None:
-    # PRD 9.4/10.5: recall_scene() resets every previously-swept name back to
+    # recall_scene() resets every previously-swept name back to
     # None until the post-recall sweep repopulates it. A snapshot taken in
     # that window must still report the channel, with a null name, rather
     # than silently drop the key -- otherwise "not yet re-swept" and
@@ -44,7 +44,7 @@ async def test_snapshot_reports_a_currently_unnamed_channel_as_null_not_omitted(
 async def test_snapshot_includes_unconfirmed_and_known_entries_with_their_freshness(  # type: ignore[no-untyped-def]
     fake_qu_factory,
 ) -> None:
-    # PRD 10.5: an UNCONFIRMED write must not be silently dropped or reported
+    # an UNCONFIRMED write must not be silently dropped or reported
     # as if it were KNOWN -- a snapshot that hid it would be indistinguishable
     # from one where the console actually confirmed the write. Note this is
     # not a test of UNKNOWN coverage: StateCache never materializes a row for
@@ -115,7 +115,7 @@ async def test_diff_of_an_identical_snapshot_is_empty(fake_qu_factory) -> None: 
 async def test_diff_reconstructs_a_global_channel_from_its_snapshot_row(  # type: ignore[no-untyped-def]
     fake_qu_factory,
 ) -> None:
-    # group_mode is the one registered GLOBAL parameter (PRD 7.2). Its
+    # group_mode is the one registered GLOBAL parameter. Its
     # snapshot row carries channel_raw=0 (StateCache.key() stores ch.index
     # for GLOBAL), so a reader that decoded that as a wire byte would look
     # the value up under FX Send 1, find nothing, and report a phantom diff.
@@ -158,7 +158,7 @@ def test_diff_reconstructs_a_dsnake_socket_channel_from_its_snapshot_row() -> No
 
 
 async def test_there_is_no_blind_restore(fake_qu_factory) -> None:
-    # PRD 10.5: deliberately excluded. If this ever appears it must be paced,
+    # deliberately excluded. If this ever appears it must be paced,
     # resumable and dry-runnable -- see the section before adding it.
     assert not hasattr(AsyncQuMixer, "restore")
     assert not hasattr(AsyncQuMixer, "apply_snapshot")

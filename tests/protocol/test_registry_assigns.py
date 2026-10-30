@@ -1,9 +1,9 @@
 import pytest
 
-from qumidi.errors import ParameterRangeError
-from qumidi.protocol.params import Fixed, FlaggedIndex
-from qumidi.protocol.registry import REGISTRY
-from qumidi.state import sub_index_for
+from qumixer_py.errors import ParameterRangeError
+from qumixer_py.protocol.params import Fixed, FlaggedIndex
+from qumixer_py.protocol.registry import REGISTRY
+from qumixer_py.state import sub_index_for
 
 
 @pytest.mark.parametrize("name,nrpn_id", [("dca_assign", 0x40), ("mute_group_assign", 0x5C)])
@@ -21,7 +21,7 @@ def test_assigns_are_flagged_index_with_a_fixed_07_filler(name, nrpn_id) -> None
     (0, False, 0x00), (3, False, 0x03), (0, True, 0x40), (3, True, 0x43),
 ])
 def test_the_documented_encoding(name, index, on, expected) -> None:  # type: ignore[no-untyped-def]
-    # PRD 14.2: the DCA row's *label* is a copy-paste error, but the encoding
+    # the DCA row's *label* is a copy-paste error, but the encoding
     # is correct as given.
     domain = REGISTRY.lookup(name).domain
     assert domain.encode(index=index, on=on) == expected  # type: ignore[attr-defined]

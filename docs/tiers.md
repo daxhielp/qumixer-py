@@ -5,11 +5,11 @@ this file; re-run the script.
 
 | Tier | Meaning |
 |---|---|
-| `VERIFIED` | Confirmed against physical hardware by the M6 calibration run. |
+| `VERIFIED` | Confirmed against physical hardware by the hardware calibration run. |
 | `SUPPORTED` | Transcribed from the spec, round-tripped against a golden vector, exercised against `FakeQu` — but never seen by a real console. |
 | `EXPERIMENTAL` | Something about the encoding, the addressing or the semantics is still an open question. |
 
-**No parameter is at `VERIFIED` in this release.** The M6 hardware run has not
+**No parameter is at `VERIFIED` in this release.** The hardware hardware run has not
 happened, and `VERIFIED` is set by the calibration tool
 (`tools/calibrate.py`), never by hand. Treat the whole table as `SUPPORTED`
 at best.
@@ -20,12 +20,12 @@ at best.
 | Parameter | ID | VX | Domain | Applies to | Direction | Tier | Notes |
 |---|---|---|---|---|---|---|---|
 | `dsnake_48v` | `0x5a` | DsnakeSocket | Boolean | INPUT | BIDIRECTIONAL | EXPERIMENTAL |  |
-| `dsnake_gain` | `0x58` | DsnakeSocket | Interpolated | INPUT | BIDIRECTIONAL | EXPERIMENTAL | +5..+60 dB (PRD 8.3) -- a different curve from local gain. Socket in VX; whether CH addresses anything is an M6 question (PRD 7.2), so the cache keys on the socket under the synthetic DSNAKE channel. |
+| `dsnake_gain` | `0x58` | DsnakeSocket | Interpolated | INPUT | BIDIRECTIONAL | EXPERIMENTAL | +5..+60 dB -- a different curve from local gain. Socket in VX; whether CH addresses anything is an open hardware question, so the cache keys on the socket under the synthetic DSNAKE channel. |
 | `dsnake_pad` | `0x59` | DsnakeSocket | Boolean | INPUT | BIDIRECTIONAL | EXPERIMENTAL | 0x00 out, 0x01 in. Only dSNAKE has a pad. |
-| `fx_delay_coarse` | `0x48` | FxTap | Raw7Bit | FX_SEND | BIDIRECTIONAL | EXPERIMENTAL | MSB. Shares id 0x48 with fx_delay_link, discriminated only by VX (PRD 14.5): 0x05 left, 0x07 right. |
-| `fx_delay_fine` | `0x49` | FxTap | Raw7Bit | FX_SEND | BIDIRECTIONAL | EXPERIMENTAL | LSB. For fine resolution send this BEFORE the coarse MSB (PRD 7.2). |
-| `fx_delay_link` | `0x48` | Fixed `0x06` | Boolean | FX_SEND | BIDIRECTIONAL | EXPERIMENTAL | Shares id 0x48 with fx_delay_coarse (PRD 14.5). 0x00 unlinked, 0x7F linked. |
-| `group_mode` | `0x5e` | Fixed `0x00` | Boolean | GLOBAL | RX_ONLY | EXPERIMENTAL | PRD 7.2: console-global with no documented CH. Stored under the synthetic GLOBAL channel and accepted from any CH until M6 records the real one. 0x00 group mode, 0x01 mix mode. |
+| `fx_delay_coarse` | `0x48` | FxTap | Raw7Bit | FX_SEND | BIDIRECTIONAL | EXPERIMENTAL | MSB. Shares id 0x48 with fx_delay_link, discriminated only by VX: 0x05 left, 0x07 right. |
+| `fx_delay_fine` | `0x49` | FxTap | Raw7Bit | FX_SEND | BIDIRECTIONAL | EXPERIMENTAL | LSB. For fine resolution send this BEFORE the coarse MSB. |
+| `fx_delay_link` | `0x48` | Fixed `0x06` | Boolean | FX_SEND | BIDIRECTIONAL | EXPERIMENTAL | Shares id 0x48 with fx_delay_coarse. 0x00 unlinked, 0x7F linked. |
+| `group_mode` | `0x5e` | Fixed `0x00` | Boolean | GLOBAL | RX_ONLY | EXPERIMENTAL | Console-global with no documented CH. Stored under the synthetic GLOBAL channel and accepted from any CH until a hardware run records the real one. 0x00 group mode, 0x01 mix mode. |
 | `comp.attack` | `0x62` | Fixed `0x07` | Interpolated | GROUP, INPUT, LR, MATRIX, MIX_MONO, MIX_STEREO, STEREO_INPUT | BIDIRECTIONAL | SUPPORTED | 300 us - 300 ms, curve unverified. |
 | `comp.knee` | `0x64` | Fixed `0x07` | EnumDomain | GROUP, INPUT, LR, MATRIX, MIX_MONO, MIX_STEREO, STEREO_INPUT | BIDIRECTIONAL | SUPPORTED |  |
 | `comp.makeup` | `0x67` | Fixed `0x07` | Interpolated | GROUP, INPUT, LR, MATRIX, MIX_MONO, MIX_STEREO, STEREO_INPUT | BIDIRECTIONAL | SUPPORTED |  |
@@ -34,32 +34,32 @@ at best.
 | `comp.threshold` | `0x66` | Fixed `0x07` | Interpolated | GROUP, INPUT, LR, MATRIX, MIX_MONO, MIX_STEREO, STEREO_INPUT | BIDIRECTIONAL | SUPPORTED |  |
 | `comp.type` | `0x61` | Fixed `0x07` | EnumDomain | GROUP, INPUT, LR, MATRIX, MIX_MONO, MIX_STEREO, STEREO_INPUT | BIDIRECTIONAL | SUPPORTED |  |
 | `comp_in` | `0x68` | Fixed `0x00` | Boolean | GROUP, INPUT, LR, MATRIX, MIX_MONO, MIX_STEREO, STEREO_INPUT | BIDIRECTIONAL | SUPPORTED | VX is 0x00 here, not 0x07. |
-| `dca_assign` | `0x40` | Fixed `0x07` | FlaggedIndex | FX_RETURN, GROUP, INPUT, MIX_MONO, MIX_STEREO, STEREO_INPUT | BIDIRECTIONAL | SUPPORTED | 0x00-0x03 off group 1-4, 0x40-0x43 on. PRD 14.2: the spec labels this row 'Mute Grp' -- that is a copy-paste error; the encoding is right. |
+| `dca_assign` | `0x40` | Fixed `0x07` | FlaggedIndex | FX_RETURN, GROUP, INPUT, MIX_MONO, MIX_STEREO, STEREO_INPUT | BIDIRECTIONAL | SUPPORTED | 0x00-0x03 off group 1-4, 0x40-0x43 on. The spec labels this row 'Mute Grp' -- that is a copy-paste error; the encoding is right. |
 | `delay_in` | `0x6d` | Fixed `0x00` | Boolean | GROUP, INPUT, LR, MATRIX, MIX_MONO, MIX_STEREO, STEREO_INPUT | BIDIRECTIONAL | SUPPORTED | VX is 0x00 here, not 0x07. |
 | `delay_time` | `0x6c` | Fixed `0x07` | Interpolated | GROUP, LR, MATRIX, MIX_MONO, MIX_STEREO | BIDIRECTIONAL | SUPPORTED | Mix/group/matrix: 0-170 ms across 0x00-0x7F. Linear. |
-| `delay_time` | `0x6c` | Fixed `0x07` | Interpolated | INPUT, STEREO_INPUT | BIDIRECTIONAL | SUPPORTED | Inputs: 0-85 ms across 0x00-0x40. Writing 0x41-0x7F here is a ParameterRangeError; receiving it clamps to 0x40 (PRD 7.2). |
+| `delay_time` | `0x6c` | Fixed `0x07` | Interpolated | INPUT, STEREO_INPUT | BIDIRECTIONAL | SUPPORTED | Inputs: 0-85 ms across 0x00-0x40. Writing 0x41-0x7F here is a ParameterRangeError; receiving it clamps to 0x40. |
 | `digital_trim` | `0x52` | Fixed `0x07` | Interpolated | INPUT | BIDIRECTIONAL | SUPPORTED | -24..+24 dB, 0 dB = 0x40. Applies when the USB source is selected. |
-| `dsnake_patch` | `0x5d` | Fixed `0x00` | Raw7Bit | INPUT, STEREO_INPUT | RX_ONLY | SUPPORTED | PRD 7.2: RX only. The channel->socket map, and the only way to know which socket a channel's remote preamp lives on. |
+| `dsnake_patch` | `0x5d` | Fixed `0x00` | Raw7Bit | INPUT, STEREO_INPUT | RX_ONLY | SUPPORTED | RX only. The channel->socket map, and the only way to know which socket a channel's remote preamp lives on. |
 | `fader` | `0x17` | Fixed `0x07` | Interpolated | DCA, FX_RETURN, GROUP, INPUT, LR, MATRIX, MIX_MONO, MIX_STEREO, STEREO_INPUT | BIDIRECTIONAL | SUPPORTED |  |
-| `gate.attack` | `0x41` | Fixed `0x07` | Interpolated | INPUT, STEREO_INPUT | BIDIRECTIONAL | SUPPORTED | 50 us - 300 ms, curve unverified (PRD 8.4). |
+| `gate.attack` | `0x41` | Fixed `0x07` | Interpolated | INPUT, STEREO_INPUT | BIDIRECTIONAL | SUPPORTED | 50 us - 300 ms, curve unverified. |
 | `gate.depth` | `0x45` | Fixed `0x07` | Interpolated | INPUT, STEREO_INPUT | BIDIRECTIONAL | SUPPORTED |  |
 | `gate.hold` | `0x43` | Fixed `0x07` | Interpolated | INPUT, STEREO_INPUT | BIDIRECTIONAL | SUPPORTED | 10 ms - 5 s, curve unverified. |
 | `gate.release` | `0x42` | Fixed `0x07` | Interpolated | INPUT, STEREO_INPUT | BIDIRECTIONAL | SUPPORTED | 10 ms - 1 s, curve unverified. |
 | `gate.threshold` | `0x44` | Fixed `0x07` | Interpolated | INPUT, STEREO_INPUT | BIDIRECTIONAL | SUPPORTED |  |
 | `gate_in` | `0x46` | Fixed `0x00` | Boolean | INPUT, STEREO_INPUT | BIDIRECTIONAL | SUPPORTED | VX is 0x00 here, not 0x07. |
-| `geq_gain` | `0x70` | GeqBand | Interpolated | GROUP, LR, MATRIX, MIX_MONO, MIX_STEREO | BIDIRECTIONAL | SUPPORTED | 28 bands, index 0x00-0x1B. Band 15 is 1 kHz (PRD 11.1). |
+| `geq_gain` | `0x70` | GeqBand | Interpolated | GROUP, LR, MATRIX, MIX_MONO, MIX_STEREO | BIDIRECTIONAL | SUPPORTED | 28 bands, index 0x00-0x1B. Band 15 is 1 kHz. |
 | `geq_in` | `0x71` | Fixed `0x00` | Boolean | GROUP, LR, MATRIX, MIX_MONO, MIX_STEREO | BIDIRECTIONAL | SUPPORTED | VX is 0x00 here, not 0x07. |
 | `hpf_freq` | `0x13` | Fixed `0x07` | Interpolated | INPUT, STEREO_INPUT | BIDIRECTIONAL | SUPPORTED |  |
 | `hpf_in` | `0x14` | Fixed `0x00` | Boolean | INPUT, STEREO_INPUT | BIDIRECTIONAL | SUPPORTED | VX is 0x00 here, not 0x07. |
 | `insert` | `0x6b` | Fixed `0x07` | Boolean | GROUP, INPUT, LR, MATRIX, MIX_MONO, MIX_STEREO, STEREO_INPUT | BIDIRECTIONAL | SUPPORTED | 0x00 out, 0x01 in. |
 | `local_48v` | `0x69` | Fixed `0x07` | Boolean | INPUT | BIDIRECTIONAL | SUPPORTED |  |
-| `local_gain` | `0x19` | Fixed `0x07` | Interpolated | INPUT | BIDIRECTIONAL | SUPPORTED | -5..+60 dB (PRD 8.2). Local preamp has NO pad parameter. |
-| `lr_assign` | `0x18` | Fixed `0x07` | Boolean | FX_RETURN, GROUP, INPUT, MIX_MONO, MIX_STEREO, STEREO_INPUT | BIDIRECTIONAL | SUPPORTED | PRD 14.8: the canonical encoding for LR assignment. 55/07 is rejected on write and normalised to this key on read. |
-| `mix_assign` | `0x55` | SendTarget | Boolean | FX_RETURN, GROUP, INPUT, MIX_MONO, MIX_STEREO, STEREO_INPUT | BIDIRECTIONAL | SUPPORTED | PRD 14.8: valid only for VX in 00-06, 08-0D, 10-13. Encoding 55/07 is a ParameterRangeError -- use lr_assign (18) for LR. |
+| `local_gain` | `0x19` | Fixed `0x07` | Interpolated | INPUT | BIDIRECTIONAL | SUPPORTED | -5..+60 dB. Local preamp has NO pad parameter. |
+| `lr_assign` | `0x18` | Fixed `0x07` | Boolean | FX_RETURN, GROUP, INPUT, MIX_MONO, MIX_STEREO, STEREO_INPUT | BIDIRECTIONAL | SUPPORTED | The canonical encoding for LR assignment. 55/07 is rejected on write and normalised to this key on read. |
+| `mix_assign` | `0x55` | SendTarget | Boolean | FX_RETURN, GROUP, INPUT, MIX_MONO, MIX_STEREO, STEREO_INPUT | BIDIRECTIONAL | SUPPORTED | Valid only for VX in 00-06, 08-0D, 10-13. Encoding 55/07 is a ParameterRangeError -- use lr_assign (18) for LR. |
 | `mix_pre` | `0x50` | SendTarget | Boolean | FX_RETURN, GROUP, INPUT, MIX_MONO, MIX_STEREO, STEREO_INPUT | BIDIRECTIONAL | SUPPORTED | 0x00 post, 0x01 pre. |
 | `mute_group_assign` | `0x5c` | Fixed `0x07` | FlaggedIndex | FX_RETURN, GROUP, INPUT, MIX_MONO, MIX_STEREO, STEREO_INPUT | BIDIRECTIONAL | SUPPORTED | 0x00-0x03 off group 1-4, 0x40-0x43 on. |
 | `pafl` | `0x51` | Fixed `0x07` | Boolean | DCA, FX_RETURN, GROUP, INPUT, LR, MATRIX, MIX_MONO, MIX_STEREO, STEREO_INPUT | BIDIRECTIONAL | SUPPORTED |  |
-| `pan` | `0x16` | SendTarget | Raw7Bit | FX_RETURN, GROUP, INPUT, MIX_MONO, MIX_STEREO, STEREO_INPUT | BIDIRECTIONAL | SUPPORTED | Centre 0x25, full left 0x00, full right 0x4A. There is no separate channel-pan parameter: a channel's LR pan is pan with VX=0x07 (PRD 7.2). |
+| `pan` | `0x16` | SendTarget | Raw7Bit | FX_RETURN, GROUP, INPUT, MIX_MONO, MIX_STEREO, STEREO_INPUT | BIDIRECTIONAL | SUPPORTED | Centre 0x25, full left 0x00, full right 0x4A. There is no separate channel-pan parameter: a channel's LR pan is pan with VX=0x07. |
 | `peq.hf.freq` | `0x0e` | Fixed `0x07` | Interpolated | FX_RETURN, GROUP, INPUT, LR, MATRIX, MIX_MONO, MIX_STEREO, STEREO_INPUT | BIDIRECTIONAL | SUPPORTED |  |
 | `peq.hf.gain` | `0x0d` | Fixed `0x07` | Interpolated | FX_RETURN, GROUP, INPUT, LR, MATRIX, MIX_MONO, MIX_STEREO, STEREO_INPUT | BIDIRECTIONAL | SUPPORTED |  |
 | `peq.hf.type` | `0x10` | Fixed `0x07` | EnumDomain | FX_RETURN, GROUP, INPUT, LR, MATRIX, MIX_MONO, MIX_STEREO, STEREO_INPUT | BIDIRECTIONAL | SUPPORTED |  |
@@ -67,7 +67,7 @@ at best.
 | `peq.hm.freq` | `0x0a` | Fixed `0x07` | Interpolated | FX_RETURN, GROUP, INPUT, LR, MATRIX, MIX_MONO, MIX_STEREO, STEREO_INPUT | BIDIRECTIONAL | SUPPORTED |  |
 | `peq.hm.gain` | `0x09` | Fixed `0x07` | Interpolated | FX_RETURN, GROUP, INPUT, LR, MATRIX, MIX_MONO, MIX_STEREO, STEREO_INPUT | BIDIRECTIONAL | SUPPORTED |  |
 | `peq.hm.width` | `0x0b` | Fixed `0x07` | Interpolated | FX_RETURN, GROUP, INPUT, LR, MATRIX, MIX_MONO, MIX_STEREO, STEREO_INPUT | BIDIRECTIONAL | SUPPORTED |  |
-| `peq.lf.freq` | `0x02` | Fixed `0x07` | Interpolated | FX_RETURN, GROUP, INPUT, LR, MATRIX, MIX_MONO, MIX_STEREO, STEREO_INPUT | BIDIRECTIONAL | SUPPORTED | 20 Hz-20 kHz, curve unverified (PRD 8.4). |
+| `peq.lf.freq` | `0x02` | Fixed `0x07` | Interpolated | FX_RETURN, GROUP, INPUT, LR, MATRIX, MIX_MONO, MIX_STEREO, STEREO_INPUT | BIDIRECTIONAL | SUPPORTED | 20 Hz-20 kHz, curve unverified. |
 | `peq.lf.gain` | `0x01` | Fixed `0x07` | Interpolated | FX_RETURN, GROUP, INPUT, LR, MATRIX, MIX_MONO, MIX_STEREO, STEREO_INPUT | BIDIRECTIONAL | SUPPORTED |  |
 | `peq.lf.type` | `0x04` | Fixed `0x07` | EnumDomain | FX_RETURN, GROUP, INPUT, LR, MATRIX, MIX_MONO, MIX_STEREO, STEREO_INPUT | BIDIRECTIONAL | SUPPORTED |  |
 | `peq.lf.width` | `0x03` | Fixed `0x07` | Interpolated | FX_RETURN, GROUP, INPUT, LR, MATRIX, MIX_MONO, MIX_STEREO, STEREO_INPUT | BIDIRECTIONAL | SUPPORTED | 1.5 to 1/9 octave, curve unverified. |
@@ -77,7 +77,7 @@ at best.
 | `peq_in` | `0x11` | Fixed `0x00` | Boolean | FX_RETURN, GROUP, INPUT, LR, MATRIX, MIX_MONO, MIX_STEREO, STEREO_INPUT | BIDIRECTIONAL | SUPPORTED | VX is 0x00 here, not 0x07. |
 | `polarity` | `0x6a` | Fixed `0x07` | Boolean | INPUT, STEREO_INPUT | BIDIRECTIONAL | SUPPORTED | 0x00 normal, 0x01 reversed. |
 | `preamp_source` | `0x57` | Fixed `0x00` | Boolean | INPUT, STEREO_INPUT | BIDIRECTIONAL | SUPPORTED | 0x00 local, 0x01 dSNAKE. ch.preamp dispatches on this. |
-| `send_level` | `0x20` | SendTarget | Interpolated | FX_RETURN, GROUP, INPUT, MIX_MONO, MIX_STEREO, STEREO_INPUT | BIDIRECTIONAL | SUPPORTED | Same taper as the fader, including the undefined 0x01-0x0B band (PRD 8.1). |
+| `send_level` | `0x20` | SendTarget | Interpolated | FX_RETURN, GROUP, INPUT, MIX_MONO, MIX_STEREO, STEREO_INPUT | BIDIRECTIONAL | SUPPORTED | Same taper as the fader, including the undefined 0x01-0x0B band. |
 | `stereo_trim` | `0x54` | Fixed `0x07` | Interpolated | STEREO_INPUT | BIDIRECTIONAL | SUPPORTED |  |
 | `usb_source` | `0x12` | Fixed `0x00` | Boolean | INPUT, STEREO_INPUT | BIDIRECTIONAL | SUPPORTED | 0x00 preamp, 0x01 USB. |
 
@@ -147,12 +147,12 @@ hardware; it has not been run against a real console.
 | Question | Interim behaviour | Test that would answer it |
 |---|---|---|
 | Does a Qu-24 have groups 5-6 and 7-8? | `CAPS_BY_BOX_ID[2].groups = 2`, `groups_provisional=True`, so an out-of-range group warns and is permitted rather than refused | `test_whether_a_qu24_has_group_5_6` |
-| Which Qu-24 meter layout is right, `180 unused` or `100`? | `LAYOUTS["qu24"] = QU24_AS_WRITTEN`; the runtime frame-size check is authoritative over the table (erratum 14.12) | `test_which_qu24_meter_layout_is_correct` |
+| Which Qu-24 meter layout is right, `180 unused` or `100`? | `LAYOUTS["qu24"] = QU24_AS_WRITTEN`; the runtime frame-size check is authoritative over the table (protocol note 12) | `test_which_qu24_meter_layout_is_correct` |
 | Does dSNAKE gain/pad/48V address anything in `CH`? | `Tier.EXPERIMENTAL`; cached on the socket in `VX` | `test_dsnake_addressing` |
 | What `CH` does Group Mode (`5E`) report on? | Accepted from any `CH`, cached under the synthetic `GLOBAL` channel | `test_group_mode_reports_its_channel` |
 | Does the console echo writes at all? | Assumed yes; a missing echo inside `echo_window` downgrades to `UNCONFIRMED` | `test_whether_the_console_echoes_writes` |
 | How long may a channel name be? | `MAX_NAME_LENGTH = 6` | `test_measure_the_name_length_limit` |
-| What happens at MIDI channel 16? | The strip sub-API is disabled outright (erratum 14.11) | `test_behaviour_at_midi_channel_16` |
-| How long does a scene recall actually take to settle? | `SCENE_SETTLE_DELAY = 0.5 s` (erratum 14.13) | `test_measure_the_scene_recall_settling_time` |
-| Does the console emit `55/07` or `18` for LR assign? | Write `18` only; normalise both on read (erratum 14.8) | observe a live LR-assign toggle under `qumidi monitor` |
+| What happens at MIDI channel 16? | The strip sub-API is disabled outright (protocol note 11) | `test_behaviour_at_midi_channel_16` |
+| How long does a scene recall actually take to settle? | `SCENE_SETTLE_DELAY = 0.5 s` (protocol note 13) | `test_measure_the_scene_recall_settling_time` |
+| Does the console emit `55/07` or `18` for LR assign? | Write `18` only; normalise both on read (protocol note 8) | observe a live LR-assign toggle under `qumixer-py monitor` |
 | Where do the unverified tapers actually bend? | Endpoint interpolation, `verified=False` | `tools/calibrate.py` |

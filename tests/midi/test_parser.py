@@ -1,11 +1,11 @@
-from qumidi.midi.messages import (
+from qumixer_py.midi.messages import (
     ControlChange,
     NoteOn,
     ProgramChange,
     SysEx,
     SystemRealtime,
 )
-from qumidi.midi.parser import MidiStreamParser
+from qumixer_py.midi.parser import MidiStreamParser
 
 
 def parse_all(data: bytes) -> list[object]:
@@ -122,7 +122,7 @@ REPRESENTATIVE = bytes(
 
 
 def test_boundary_fuzz_every_single_split_point() -> None:
-    # PRD 13.3: split at every possible position; the message list is identical.
+    # split at every possible position; the message list is identical.
     expected = MidiStreamParser().feed(REPRESENTATIVE)
     for cut in range(len(REPRESENTATIVE) + 1):
         parser = MidiStreamParser()
@@ -140,7 +140,7 @@ def test_boundary_fuzz_byte_at_a_time() -> None:
 
 
 def test_realtime_injection_at_every_index_is_transparent() -> None:
-    # PRD 13.3: insert FE at every index; non-realtime messages parse identically.
+    # insert FE at every index; non-realtime messages parse identically.
     expected = [m for m in MidiStreamParser().feed(REPRESENTATIVE)]
     for index in range(len(REPRESENTATIVE) + 1):
         injected = REPRESENTATIVE[:index] + bytes([0xFE]) + REPRESENTATIVE[index:]
@@ -177,7 +177,7 @@ _messages = st.one_of(
 @settings(max_examples=200)
 @given(msgs=st.lists(_messages, max_size=20), cuts=st.lists(st.integers(0, 500), max_size=10))
 def test_encode_chunk_parse_is_the_identity(msgs: list[object], cuts: list[int]) -> None:
-    # PRD 13.3: arbitrary well-formed messages -> encode -> chunk -> parse -> identity.
+    # arbitrary well-formed messages -> encode -> chunk -> parse -> identity.
     stream = b"".join(m.to_bytes() for m in msgs)  # type: ignore[attr-defined]
     points = sorted({0, len(stream)} | {min(x, len(stream)) for x in cuts})
     parser = MidiStreamParser()

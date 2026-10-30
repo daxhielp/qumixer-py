@@ -1,15 +1,15 @@
-"""PRD 11.1 quickstart, verbatim -- the async API end to end.
+"""Quickstart -- the async API end to end.
 
 Requires a real Qu console reachable at the host below; this is not exercised
-by the test suite (see task-9.2-report.md, Step 5). Watch the GEQ screen for
+by the test suite. Watch the GEQ screen for
 the last two calls: both must move band 15 (1 kHz), not band 14 (800 Hz) --
-the v1.0 PRD correction, and the easiest thing to get subtly wrong.
+a known spec correction, and the easiest thing to get subtly wrong.
 """
 
 import asyncio
 
-from qumidi import AsyncQuMixer
-from qumidi.protocol.channels import Mix
+from qumixer_py import AsyncQuMixer
+from qumixer_py.protocol.channels import Mix
 
 
 async def main() -> None:

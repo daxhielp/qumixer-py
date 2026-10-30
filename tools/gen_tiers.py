@@ -5,7 +5,7 @@
 
 Everything in the generated page that *can* be derived from code is derived
 from code: the parameter table comes from ``REGISTRY``, and the taper table
-comes from the ``Taper`` objects in ``qumidi.protocol.units`` and from which
+comes from the ``Taper`` objects in ``qumixer_py.protocol.units`` and from which
 ``ParamSpec``s actually reference them. Only the prose and the open-questions
 list are hand-written, and those describe process, not facts about the code.
 
@@ -21,10 +21,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from qumidi.protocol import units
-from qumidi.protocol.params import Interpolated, ParamSpec
-from qumidi.protocol.registry import REGISTRY
-from qumidi.protocol.units import Taper
+from qumixer_py.protocol import units
+from qumixer_py.protocol.params import Interpolated, ParamSpec
+from qumixer_py.protocol.registry import REGISTRY
+from qumixer_py.protocol.units import Taper
 
 PREAMBLE = """\
 # Parameter tiers
@@ -34,11 +34,11 @@ this file; re-run the script.
 
 | Tier | Meaning |
 |---|---|
-| `VERIFIED` | Confirmed against physical hardware by the M6 calibration run. |
+| `VERIFIED` | Confirmed against physical hardware by the hardware calibration run. |
 | `SUPPORTED` | Transcribed from the spec, round-tripped against a golden vector, exercised against `FakeQu` — but never seen by a real console. |
 | `EXPERIMENTAL` | Something about the encoding, the addressing or the semantics is still an open question. |
 
-**No parameter is at `VERIFIED` in this release.** The M6 hardware run has not
+**No parameter is at `VERIFIED` in this release.** The hardware hardware run has not
 happened, and `VERIFIED` is set by the calibration tool
 (`tools/calibrate.py`), never by hand. Treat the whole table as `SUPPORTED`
 at best.
@@ -86,14 +86,14 @@ hardware; it has not been run against a real console.
 | Question | Interim behaviour | Test that would answer it |
 |---|---|---|
 | Does a Qu-24 have groups 5-6 and 7-8? | `CAPS_BY_BOX_ID[2].groups = 2`, `groups_provisional=True`, so an out-of-range group warns and is permitted rather than refused | `test_whether_a_qu24_has_group_5_6` |
-| Which Qu-24 meter layout is right, `180 unused` or `100`? | `LAYOUTS["qu24"] = QU24_AS_WRITTEN`; the runtime frame-size check is authoritative over the table (erratum 14.12) | `test_which_qu24_meter_layout_is_correct` |
+| Which Qu-24 meter layout is right, `180 unused` or `100`? | `LAYOUTS["qu24"] = QU24_AS_WRITTEN`; the runtime frame-size check is authoritative over the table (protocol note 12) | `test_which_qu24_meter_layout_is_correct` |
 | Does dSNAKE gain/pad/48V address anything in `CH`? | `Tier.EXPERIMENTAL`; cached on the socket in `VX` | `test_dsnake_addressing` |
 | What `CH` does Group Mode (`5E`) report on? | Accepted from any `CH`, cached under the synthetic `GLOBAL` channel | `test_group_mode_reports_its_channel` |
 | Does the console echo writes at all? | Assumed yes; a missing echo inside `echo_window` downgrades to `UNCONFIRMED` | `test_whether_the_console_echoes_writes` |
 | How long may a channel name be? | `MAX_NAME_LENGTH = 6` | `test_measure_the_name_length_limit` |
-| What happens at MIDI channel 16? | The strip sub-API is disabled outright (erratum 14.11) | `test_behaviour_at_midi_channel_16` |
-| How long does a scene recall actually take to settle? | `SCENE_SETTLE_DELAY = 0.5 s` (erratum 14.13) | `test_measure_the_scene_recall_settling_time` |
-| Does the console emit `55/07` or `18` for LR assign? | Write `18` only; normalise both on read (erratum 14.8) | observe a live LR-assign toggle under `qumidi monitor` |
+| What happens at MIDI channel 16? | The strip sub-API is disabled outright (protocol note 11) | `test_behaviour_at_midi_channel_16` |
+| How long does a scene recall actually take to settle? | `SCENE_SETTLE_DELAY = 0.5 s` (protocol note 13) | `test_measure_the_scene_recall_settling_time` |
+| Does the console emit `55/07` or `18` for LR assign? | Write `18` only; normalise both on read (protocol note 8) | observe a live LR-assign toggle under `qumixer-py monitor` |
 | Where do the unverified tapers actually bend? | Endpoint interpolation, `verified=False` | `tools/calibrate.py` |
 """
 

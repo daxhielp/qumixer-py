@@ -2,9 +2,9 @@ import asyncio
 
 import pytest
 
-from qumidi.errors import QuConnectionError
-from qumidi.transport.base import ConnectionState
-from qumidi.transport.tcp import TcpTransport
+from qumixer_py.errors import QuConnectionError
+from qumixer_py.transport.base import ConnectionState
+from qumixer_py.transport.tcp import TcpTransport
 
 
 async def test_reconnects_after_the_server_drops_the_connection(fake_qu_factory) -> None:  # type: ignore[no-untyped-def]
@@ -83,8 +83,8 @@ async def test_max_attempts_gives_up_after_repeated_reconnect_failures(fake_qu_f
 
 
 async def test_close_during_backoff_does_not_resurrect_the_connection(fake_qu_factory) -> None:  # type: ignore[no-untyped-def]
-    # PRD 4.4: a user-initiated close must not race with a pending backoff
-    # timer. PRD 16.16.
+    # a user-initiated close must not race with a pending backoff
+    # timer..
     fake = await fake_qu_factory()
     t = TcpTransport(
         "127.0.0.1", port=fake.port, auto_reconnect=True, reconnect_backoff_min=0.3

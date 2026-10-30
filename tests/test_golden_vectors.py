@@ -1,4 +1,4 @@
-"""The highest-value test set (PRD 13.2).
+"""The highest-value test set.
 
 These vectors are transcribed by hand from the spec, not generated from the
 registry. They exist to catch a wrong VX filler byte or a transposed NRPN id,
@@ -12,9 +12,9 @@ import pathlib
 
 import pytest
 
-from qumidi.midi.nrpn import encode_nrpn
-from qumidi.protocol.channels import channel_from_raw
-from qumidi.protocol.registry import REGISTRY
+from qumixer_py.midi.nrpn import encode_nrpn
+from qumixer_py.protocol.channels import channel_from_raw
+from qumixer_py.protocol.registry import REGISTRY
 
 FIXTURE = pathlib.Path(__file__).parent / "fixtures" / "golden_params.yaml"
 
@@ -60,11 +60,11 @@ def vector_id(vec: dict[str, object]) -> str:
 def spec_for(param: str, cls):  # type: ignore[no-untyped-def]
     """Resolve a vector's ParamSpec, tolerating console-global parameters.
 
-    group_mode has no documented CH (PRD 7.2), so its vector carries a
+    group_mode has no documented CH, so its vector carries a
     placeholder channel byte whose class the spec does not claim. Fall back to
     a class-free lookup for those rather than special-casing the fixture.
     """
-    from qumidi.errors import UnknownParameterError
+    from qumixer_py.errors import UnknownParameterError
 
     try:
         return REGISTRY.lookup(param, cls)
@@ -92,10 +92,10 @@ def test_golden_vector_encodes_to_the_expected_bytes(vec: dict[str, object]) -> 
 
 @pytest.mark.parametrize("vec", VECTORS, ids=vector_id)
 def test_golden_vector_parses_back_to_the_same_logical_value(vec: dict[str, object]) -> None:
-    # PRD 16.2: set via API -> observed bytes match the vector -> parsed back
+    # set via API -> observed bytes match the vector -> parsed back
     # to the same logical value.
-    from qumidi.midi.nrpn import NrpnDecoder
-    from qumidi.midi.parser import MidiStreamParser
+    from qumixer_py.midi.nrpn import NrpnDecoder
+    from qumixer_py.midi.parser import MidiStreamParser
 
     expected = bytes.fromhex(str(vec["expected"]).replace(" ", ""))
     decoder = NrpnDecoder()
@@ -118,7 +118,7 @@ def test_the_fixture_actually_loaded() -> None:
 
 
 def test_the_fixture_covers_every_registry_entry() -> None:
-    """PRD 13.2: a completeness test, not just a correctness test.
+    """a completeness test, not just a correctness test.
 
     Without this, a parameter added later is silently untested -- which is
     precisely the failure this fixture exists to prevent.
@@ -128,12 +128,12 @@ def test_the_fixture_covers_every_registry_entry() -> None:
     missing = sorted(registered - covered)
     assert not missing, (
         f"{len(missing)} registry parameters have no golden vector: {', '.join(missing)}. "
-        f"Transcribe one from the PRD 7.2 table by hand -- never generate it."
+        f"Transcribe one from the.2 table by hand -- never generate it."
     )
 
 
 def test_the_fixture_covers_every_vx_mode() -> None:
-    from qumidi.protocol.params import DsnakeSocket, Fixed, FxTap, GeqBand, SendTarget
+    from qumixer_py.protocol.params import DsnakeSocket, Fixed, FxTap, GeqBand, SendTarget
 
     modes_in_fixture = set()
     for vec in VECTORS:
@@ -145,11 +145,11 @@ def test_the_fixture_covers_every_vx_mode() -> None:
 
 def test_the_fixture_covers_both_fixed_filler_values() -> None:
     # The 0x07 / 0x00 alternation is the most common transcription slip. A
-    # superset check, not equality: fx_delay_link (PRD 14.5) legitimately uses
+    # superset check, not equality: fx_delay_link legitimately uses
     # a third Fixed filler, 0x06, discriminating it from fx_delay_coarse on
     # the shared id 0x48 -- that vector must stay for the completeness gate
     # above, so it must not make this assertion impossible to satisfy.
-    from qumidi.protocol.params import Fixed
+    from qumixer_py.protocol.params import Fixed
 
     fillers = set()
     for vec in VECTORS:

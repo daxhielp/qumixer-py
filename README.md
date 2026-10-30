@@ -1,4 +1,4 @@
-# qumidi
+# qumixer-py
 
 Control and observe Allen & Heath Qu-series digital mixers (Qu-16, Qu-24,
 Qu-32, Qu-Pac, Qu-SB) from Python, over MIDI-on-TCP. No runtime dependencies.
@@ -6,7 +6,7 @@ Qu-32, Qu-Pac, Qu-SB) from Python, over MIDI-on-TCP. No runtime dependencies.
 ## Install
 
 ```bash
-pip install qumidi
+pip install qumixer-py
 ```
 
 Python 3.10 or newer. The library has zero runtime dependencies.
@@ -19,24 +19,16 @@ first thing to check when something does not work.
 
 ## ⚠️ Security
 
-The Qu MIDI protocol is **unauthenticated and unencrypted**. Anyone who can
-reach port 51325 can mute the PA, recall a scene mid-show, or trigger a remote
-shutdown that requires a physical power cycle to recover from. Put the mixer
-on a trusted, isolated network. This library provides no access control and
-cannot: there is nothing to authenticate against.
-
-There is deliberately no `password` parameter anywhere in this API. If you see
-one in a fork, it is decoration.
-
-Remote shutdown is double-guarded here — it needs both `allow_shutdown=True`
-on the constructor and `confirm=True` on the call — but that is this library
-being careful, not the protocol being safe.
+The Qu MIDI protocol is **unauthenticated and unencrypted**, so anyone who can
+reach port 51325 can interact witht the mixer and potentially perform
+disruptive behavior commands. Make sure to put the mixer on a trusted, isolated
+network. 
 
 ## Quickstart
 
 ```python
 import asyncio
-from qumidi import AsyncQuMixer, Mix
+from qumixer_py import AsyncQuMixer, Mix
 
 async def main():
     async with AsyncQuMixer("192.168.1.60") as mixer:
@@ -55,7 +47,7 @@ asyncio.run(main())
 Or synchronously:
 
 ```python
-from qumidi import QuMixer
+from qumixer_py import QuMixer
 
 with QuMixer("192.168.1.60") as mixer:
     mixer.wait_synced()
@@ -77,33 +69,36 @@ with QuMixer("192.168.1.60") as mixer:
 ## Command line
 
 ```bash
-qumidi probe      --host 192.168.1.60     # model, firmware, MIDI channel
-qumidi monitor    --host 192.168.1.60     # print changes as they happen
-qumidi dump-state --host 192.168.1.60     # sync and print everything
-qumidi set        --host 192.168.1.60 fader input:6 -6db
-qumidi set-name   --host 192.168.1.60 input:6 Kick
-qumidi recall     --host 192.168.1.60 12
-qumidi record     --host 192.168.1.60 --out capture.bin
-qumidi replay     capture.bin             # serve a capture back through the fake console
+qumixer-py probe      --host 192.168.1.60     # model, firmware, MIDI channel
+qumixer-py monitor    --host 192.168.1.60     # print changes as they happen
+qumixer-py dump-state --host 192.168.1.60     # sync and print everything
+qumixer-py set        --host 192.168.1.60 fader input:6 -6db
+qumixer-py set-name   --host 192.168.1.60 input:6 Kick
+qumixer-py recall     --host 192.168.1.60 12
+qumixer-py record     --host 192.168.1.60 --out capture.bin
+qumixer-py replay     capture.bin             # serve a capture back through the fake console
 ```
 
 Add `--wire` to any of them to hex-dump every byte in both directions.
 
 ## Without hardware
 
-A complete fake console ships with the library:
+This library ships with a complete, emulated console that simulates the qumidi
+protocol. This is helpful for if developing without access to the 
+physical board. To start the fake console, run:
 
 ```bash
-python -m qumidi.testing.fake_qu --model qu32 --port 51325
-qumidi probe --host 127.0.0.1
+python -m qumixer_py.testing.fake_qu --model qu32 --port 51325
+qumixer-py probe --host 127.0.0.1
 ```
 
-The entire test suite runs against it; no hardware is needed to develop
+The entire test suite runs against it, so no hardware is needed to develop
 against this library.
 
 ## Examples
 
-Runnable, and all four run against the fake console:
+Here are some runnable examples that use this library. These work in both the 
+fake console and live mixer.
 
 | Script | What it shows |
 |---|---|
@@ -113,7 +108,7 @@ Runnable, and all four run against the fake console:
 | [`examples/state_dump.py`](examples/state_dump.py) | Sync and export the whole cache as JSON |
 
 ```bash
-python -m qumidi.testing.fake_qu --port 51325 &
+python -m qumixer_py.testing.fake_qu --port 51325 &
 python examples/state_dump.py --host 127.0.0.1 --once
 ```
 
@@ -128,8 +123,8 @@ The library never synthesises a default. If it has not been told, it says so.
 
 ## Logging
 
-One logger per module under the `qumidi` namespace, plus a separate
-`qumidi.wire` logger that hex-dumps both directions at `DEBUG`. The library
+One logger per module under the `qumixer_py` namespace, plus a separate
+`qumixer_py.wire` logger that hex-dumps both directions at `DEBUG`. The library
 installs no handlers and never calls `basicConfig` — that is your
 application's decision.
 
@@ -139,6 +134,7 @@ application's decision.
 - [Troubleshooting](docs/troubleshooting.md) — "my write did nothing"
 - [Parameter tiers](docs/tiers.md) — what is verified against hardware
 - [Protocol notes](docs/protocol-notes.md) — deliberate deviations from the vendor spec
+- [Hardware verification checklist](docs/hardware-verification.md) — what still needs checking on a real console before anything is `VERIFIED`
 
 ## Status
 
@@ -148,6 +144,34 @@ console — but **no parameter has yet been verified against physical
 hardware**, so nothing is at `Tier.VERIFIED` and several tapers are
 best-effort interpolations. See [docs/tiers.md](docs/tiers.md) for exactly
 which, and for the open questions a hardware run would close.
+
+## Development
+
+Python 3.10+. From a clone:
+
+```bash
+python -m venv .venv
+source .venv/bin/activate        # fish: source .venv/bin/activate.fish
+pip install -e '.[dev]'
+```
+
+Checks (the same ones the release gate runs):
+
+```bash
+python -m pytest -m "not hardware" --cov-fail-under=90
+ruff check .
+mypy qumixer_py
+```
+
+No mixer is needed: the suite runs against the bundled fake console. Individual
+focused runs such as `pytest tests/test_cli.py` work too.
+
+`docs/tiers.md` is generated, so don't edit it by hand. After changing the
+registry, regenerate it with `python tools/gen_tiers.py > docs/tiers.md`.
+`tests/test_docs.py` fails if you forget.
+
+The opt-in hardware suite (`tests/hardware/`) writes to a real console. Read
+`tests/hardware/conftest.py` before passing `--qu-host`.
 
 ## License
 

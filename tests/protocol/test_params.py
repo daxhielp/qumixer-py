@@ -2,9 +2,9 @@ import logging
 
 import pytest
 
-from qumidi.errors import ParameterRangeError
-from qumidi.protocol.channels import ChannelClass
-from qumidi.protocol.params import (
+from qumixer_py.errors import ParameterRangeError
+from qumixer_py.protocol.channels import ChannelClass
+from qumixer_py.protocol.params import (
     Boolean,
     Direction,
     DsnakeSocket,
@@ -19,7 +19,7 @@ from qumidi.protocol.params import (
     SendTarget,
     Tier,
 )
-from qumidi.protocol.units import FADER_TAPER
+from qumixer_py.protocol.units import FADER_TAPER
 
 
 def test_fixed_vx_supplies_the_filler_byte() -> None:
@@ -34,7 +34,7 @@ def test_fixed_vx_rejects_a_caller_supplied_index() -> None:
 
 
 def test_fixed_vx_has_no_sub_index() -> None:
-    # PRD 10.1a: a Fixed filler VX contributes no addressing index.
+    # a Fixed filler VX contributes no addressing index.
     assert Fixed(0x07).sub_index(0x07, 0x62) is None
 
 
@@ -55,7 +55,7 @@ def test_dsnake_socket_bounds() -> None:
 
 
 def test_send_target_requires_a_vx_and_checks_the_7bit_range() -> None:
-    # PRD 7.2: SendTarget only enforces presence and 7-bit range here; the
+    # SendTarget only enforces presence and 7-bit range here; the
     # real SEND_TARGET_VX lookup table belongs to the registry (a later task).
     assert SendTarget().validate(0x50, "send_level") == 0x50
     with pytest.raises(ParameterRangeError):
@@ -81,7 +81,7 @@ def test_boolean_domain() -> None:
 
 
 def test_raw7bit_bounds_are_explicit_and_enforced_on_write() -> None:
-    # PRD 7.1: several parameters do not use the full 00-7F span.
+    # several parameters do not use the full 00-7F span.
     pan = Raw7Bit(lo=0x00, hi=0x4A)
     assert pan.validate_raw(0x4A, "pan", "Input 6") == 0x4A
     with pytest.raises(ParameterRangeError) as excinfo:
@@ -92,7 +92,7 @@ def test_raw7bit_bounds_are_explicit_and_enforced_on_write() -> None:
 
 
 def test_raw7bit_clamps_rather_than_rejecting_on_receive(caplog) -> None:  # type: ignore[no-untyped-def]
-    # PRD 7.1: out-of-range reads from the console are clamped and logged,
+    # out-of-range reads from the console are clamped and logged,
     # never rejected.
     pan = Raw7Bit(lo=0x00, hi=0x4A)
     with caplog.at_level(logging.WARNING):
@@ -101,7 +101,7 @@ def test_raw7bit_clamps_rather_than_rejecting_on_receive(caplog) -> None:  # typ
 
 
 def test_flagged_index_puts_the_index_in_the_value() -> None:
-    # PRD 14.10 / 10.1a: this is the single easiest thing to get wrong.
+    # this is the single easiest thing to get wrong.
     d = FlaggedIndex(on_flag=0x40, count=4)
     assert d.sub_index_from_value(0x00) == 0
     assert d.sub_index_from_value(0x03) == 3

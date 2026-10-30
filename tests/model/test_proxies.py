@@ -2,10 +2,10 @@ import asyncio
 
 import pytest
 
-from qumidi.client_async import AsyncQuMixer
-from qumidi.errors import ValueUnknownError
-from qumidi.protocol.channels import Mix
-from qumidi.state import Freshness
+from qumixer_py.client_async import AsyncQuMixer
+from qumixer_py.errors import ValueUnknownError
+from qumixer_py.protocol.channels import Mix
+from qumixer_py.state import Freshness
 
 SCENE = {(0x25, 0x17, 0x07): 0x62, (0x25, 0x11, 0x00): 0x01}
 
@@ -22,7 +22,7 @@ async def test_set_db_and_read_back(fake_qu_factory) -> None:  # type: ignore[no
 
 
 async def test_reading_an_unknown_value_raises_rather_than_guessing(fake_qu_factory) -> None:  # type: ignore[no-untyped-def]
-    # PRD 11.1: a read of an UNKNOWN value raises rather than returning a
+    # a read of an UNKNOWN value raises rather than returning a
     # plausible-looking number.
     fake = await fake_qu_factory(scene={})
     async with AsyncQuMixer("127.0.0.1", port=fake.port) as mixer:
@@ -58,7 +58,7 @@ async def test_enum_proxy_uses_labels(fake_qu_factory) -> None:  # type: ignore[
 
 
 async def test_membership_proxy_keeps_two_dcas_independent(fake_qu_factory) -> None:  # type: ignore[no-untyped-def]
-    # PRD 16.10.
+    #.
     fake = await fake_qu_factory(scene={})
     async with AsyncQuMixer("127.0.0.1", port=fake.port) as mixer:
         await mixer.wait_synced()
@@ -88,7 +88,7 @@ async def test_send_proxy(fake_qu_factory) -> None:  # type: ignore[no-untyped-d
 
 
 async def test_ch_pan_is_sugar_for_the_lr_send(fake_qu_factory) -> None:  # type: ignore[no-untyped-def]
-    # PRD 7.2: there is no separate "channel pan" parameter.
+    # there is no separate "channel pan" parameter.
     fake = await fake_qu_factory(scene={})
     async with AsyncQuMixer("127.0.0.1", port=fake.port) as mixer:
         await mixer.wait_synced()
@@ -112,7 +112,7 @@ async def test_send_level_and_pan_reads_mirror_their_own_writes(fake_qu_factory)
 
         await send.set_pre(True)  # a second send-scoped write on the same target
 
-        pan = mixer.input(6).pan  # PRD 7.2 sugar for send(Mix.LR).pan
+        pan = mixer.input(6).pan  # sugar for send(Mix.LR).pan
         await pan.set_raw(0x10)
         assert pan.value.freshness is Freshness.KNOWN
         assert pan.raw == 0x10
@@ -149,7 +149,7 @@ async def test_preamp_set_phantom_routes_to_dsnake_when_known(fake_qu_factory) -
 async def test_preamp_set_phantom_raises_rather_than_defaulting_to_local(  # type: ignore[no-untyped-def]
     fake_qu_factory,
 ) -> None:
-    # PRD 7.2 / the plan's "never synthesize a default value": phantom power
+    # Never synthesize a default value: phantom power
     # is safety-relevant, so an unknown routing must raise, not silently fall
     # back to firing 48V into whichever preamp happens to be local.
     fake = await fake_qu_factory(scene={})
@@ -227,7 +227,7 @@ async def test_dca_master_mutes(fake_qu_factory) -> None:  # type: ignore[no-unt
 
 
 async def test_mute_group_master_fire_is_identical_to_mute(fake_qu_factory) -> None:  # type: ignore[no-untyped-def]
-    # PRD 7.2: firing a mute group has no dedicated message -- it's the same
+    # firing a mute group has no dedicated message -- it's the same
     # Note On a plain mute() sends.
     fake = await fake_qu_factory(scene={})
     async with AsyncQuMixer("127.0.0.1", port=fake.port) as mixer:
@@ -269,11 +269,11 @@ async def test_all_fade_out_ramps_lr_fader_to_zero(fake_qu_factory) -> None:  # 
 
 
 async def test_the_facade_contains_no_protocol_constants() -> None:
-    # The critical invariant from PRD 3: layer 5 is a thin proxy over layer 4.
+    # The critical invariant from: layer 5 is a thin proxy over layer 4.
     import pathlib
     import re
 
-    for path in (pathlib.Path("qumidi/model")).rglob("*.py"):
+    for path in (pathlib.Path("qumixer_py/model")).rglob("*.py"):
         source = path.read_text()
         hex_literals = re.findall(r"0x[0-9A-Fa-f]{2}\b", source)
         assert not hex_literals, f"{path} contains protocol constants: {hex_literals}"

@@ -1,8 +1,8 @@
 import pytest
 
-from qumidi.errors import ParameterRangeError
-from qumidi.protocol import constants as c
-from qumidi.protocol.sysex import QuSysex, get_name, parse_name_reply, set_name
+from qumixer_py.errors import ParameterRangeError
+from qumixer_py.protocol import constants as c
+from qumixer_py.protocol.sysex import QuSysex, get_name, parse_name_reply, set_name
 
 HEADER = bytes([0xF0, 0x00, 0x00, 0x1A, 0x50, 0x11, 0x01, 0x00])
 
@@ -18,7 +18,7 @@ def test_set_name_request() -> None:
 
 
 def test_set_name_rejects_an_over_long_name() -> None:
-    # PRD 9.4: raise rather than let the console truncate, because a truncated
+    # raise rather than let the console truncate, because a truncated
     # name round-trips differently than it was set and oscillates any
     # state-mirroring application.
     with pytest.raises(ParameterRangeError) as excinfo:
@@ -38,10 +38,35 @@ def test_parse_name_reply() -> None:
 
 
 def test_parse_name_reply_is_tolerant_of_bad_bytes(caplog) -> None:  # type: ignore[no-untyped-def]
-    # PRD 9.4: on receive, replace bytes >= 0x80 or below 0x20 with ? and log.
+    # on receive, replace bytes >= 0x80 or below 0x20 with ? and log.
     sx = QuSysex(midi_channel=0, command=0x02, payload=bytes([0x25, 0x4B, 0x01, 0x63]))
     ch, name = parse_name_reply(sx)
     assert (ch, name) == (0x25, "K?c")
+
+
+def test_parse_name_reply_strips_trailing_nul_padding(caplog) -> None:  # type: ignore[no-untyped-def]
+    # Observed on a Qu-32 (fw 1.97): names arrive as 7 bytes, NUL-padded on the
+    # right ("pianoL" is 70 69 61 6e 6f 4c 00). Padding is not corruption, so it
+    # must be stripped, not turned into '?' and logged.
+    sx = QuSysex(midi_channel=0, command=0x02, payload=bytes([0x20]) + b"pianoL\x00")
+    with caplog.at_level("WARNING"):
+        assert parse_name_reply(sx) == (0x20, "pianoL")
+    assert caplog.records == []
+
+
+def test_parse_name_reply_of_an_all_nul_name_is_empty(caplog) -> None:  # type: ignore[no-untyped-def]
+    # Unnamed channels arrive as seven NULs.
+    sx = QuSysex(midi_channel=0, command=0x02, payload=bytes([0x00]) + b"\x00" * 7)
+    with caplog.at_level("WARNING"):
+        assert parse_name_reply(sx) == (0x00, "")
+    assert caplog.records == []
+
+
+def test_parse_name_reply_still_replaces_a_nul_inside_the_name() -> None:
+    # Only the trailing run is padding; a NUL between real characters is still
+    # a bad byte under.
+    sx = QuSysex(midi_channel=0, command=0x02, payload=bytes([0x25]) + b"K\x00ck\x00\x00")
+    assert parse_name_reply(sx) == (0x25, "K?ck")
 
 
 def test_parse_name_reply_of_an_empty_name_returns_empty_string() -> None:

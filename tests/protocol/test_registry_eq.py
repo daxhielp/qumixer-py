@@ -1,9 +1,9 @@
 import pytest
 
-from qumidi.errors import ParameterRangeError, UnknownParameterError
-from qumidi.protocol.channels import ChannelClass
-from qumidi.protocol.params import Fixed, GeqBand
-from qumidi.protocol.registry import GEQ_BANDS, REGISTRY, geq_band_for_freq
+from qumixer_py.errors import ParameterRangeError, UnknownParameterError
+from qumixer_py.protocol.channels import ChannelClass
+from qumixer_py.protocol.params import Fixed, GeqBand
+from qumixer_py.protocol.registry import GEQ_BANDS, REGISTRY, geq_band_for_freq
 
 PEQ_IDS = [
     ("peq.lf.gain", 0x01, 0x07), ("peq.lf.freq", 0x02, 0x07),
@@ -29,7 +29,7 @@ def test_eq_ids_and_fillers(name, nrpn_id, filler) -> None:  # type: ignore[no-u
 
 
 def test_ids_08_and_0c_are_unassigned() -> None:
-    # PRD 7.2: the band blocks are 4 wide with the fourth slot used only by
+    # the band blocks are 4 wide with the fourth slot used only by
     # LF/HF for Type. Do not fill the gaps.
     used = {spec.nrpn_id for spec in REGISTRY}
     assert 0x08 not in used
@@ -59,7 +59,7 @@ def test_geq_gain_is_band_addressed() -> None:
 
 
 def test_geq_applies_only_to_mixes_and_lr() -> None:
-    # PRD 5.3: GEQ 70 exists only on mixes/LR -- this is exactly why keying on
+    # GEQ 70 exists only on mixes/LR -- this is exactly why keying on
     # the parameter id alone is insufficient.
     applies = REGISTRY.lookup("geq_gain").applies_to
     assert ChannelClass.LR in applies
@@ -74,7 +74,7 @@ def test_there_are_28_geq_bands_starting_at_31_5_hz() -> None:
 
 
 def test_one_kilohertz_is_band_fifteen_not_fourteen() -> None:
-    # PRD 11.1: the v1.0 example was wrong. Band 14 is 800 Hz.
+    # the v1.0 example was wrong. Band 14 is 800 Hz.
     assert GEQ_BANDS[14] == 800.0
     assert GEQ_BANDS[15] == 1000.0
     assert geq_band_for_freq(1000) == 15

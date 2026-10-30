@@ -2,8 +2,8 @@ import asyncio
 
 import pytest
 
-from qumidi.client_async import AsyncQuMixer, MmcCommand
-from qumidi.errors import ShutdownNotPermittedError
+from qumixer_py.client_async import AsyncQuMixer, MmcCommand
+from qumixer_py.errors import ShutdownNotPermittedError
 
 
 async def test_shutdown_without_the_constructor_flag_raises(fake_qu_factory) -> None:  # type: ignore[no-untyped-def]
@@ -27,7 +27,7 @@ async def test_shutdown_without_confirm_raises(fake_qu_factory) -> None:  # type
 
 
 async def test_shutdown_with_both_guards_sends_the_literal_sequence(fake_qu_factory) -> None:  # type: ignore[no-untyped-def]
-    # PRD 7.2: hardcoded to MIDI channel 0 and CH = 00, NOT the console's
+    # hardcoded to MIDI channel 0 and CH = 00, NOT the console's
     # configured channel N. Implement it literally as specified.
     fake = await fake_qu_factory(midi_channel=5)
     async with AsyncQuMixer("127.0.0.1", port=fake.port, allow_shutdown=True) as mixer:
@@ -41,8 +41,8 @@ async def test_shutdown_with_both_guards_sends_the_literal_sequence(fake_qu_fact
 
 
 def test_shutdown_is_not_in_the_object_facade() -> None:
-    # PRD 7.2: do not expose it in the object facade.
-    from qumidi.model.channel import BaseStrip, InputChannel
+    # do not expose it in the object facade.
+    from qumixer_py.model.channel import BaseStrip, InputChannel
 
     for cls in (BaseStrip, InputChannel):
         assert not hasattr(cls, "shutdown")

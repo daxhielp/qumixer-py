@@ -1,7 +1,7 @@
 import pytest
 
-from qumidi.midi.messages import SysEx
-from qumidi.protocol.sysex import (
+from qumixer_py.midi.messages import SysEx
+from qumixer_py.protocol.sysex import (
     QuSysex,
     build_sysex,
     get_system_state,
@@ -22,7 +22,7 @@ def test_build_encodes_a_non_zero_midi_channel() -> None:
 
 
 def test_build_with_none_uses_the_all_call_byte() -> None:
-    # PRD 9.1: the all-call form is required for the initial state request,
+    # the all-call form is required for the initial state request,
     # because the mixer's MIDI channel is unknown until it replies.
     assert build_sysex(None, bytes([0x10, 0x01])) == HEADER + bytes([0x7F, 0x10, 0x01, 0xF7])
 
@@ -55,7 +55,7 @@ def test_parse_accepts_the_all_call_channel_byte() -> None:
 
 
 def test_parse_rejects_a_nonsense_channel_byte() -> None:
-    # PRD 9.1: reject a header byte outside 00-0F (or the all-call 7F) rather
+    # reject a header byte outside 00-0F (or the all-call 7F) rather
     # than deriving a nonsense channel from it.
     assert parse_sysex(SysEx(data=bytes([0x00, 0x00, 0x1A, 0x50, 0x11, 0x01, 0x00, 0x40, 0x14]))) is None
 

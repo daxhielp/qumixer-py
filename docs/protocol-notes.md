@@ -9,11 +9,9 @@ so that a maintainer reading the vendor PDF and reaching for the "obvious
 fix" finds this page first. **Do not regress these.** Every one of them is
 also cited in a code comment at the site.
 
-Numbering matches PRD §14.
-
 ---
 
-## 14.1 — Mix Assign's `VX` table is self-contradictory
+## 1 — Mix Assign's `VX` table is self-contradictory
 
 **The spec says** `VX 00 to 0B = Mix1 to 9-10, LR` and then, on the next
 line, `VX 08, 09, 0A, 0B, 0C, 0D = Grp1-2 to 7-8, MTX1-2 to 3-4`. `08`–`0B`
@@ -31,14 +29,14 @@ which all four send-family parameters (`pan` `16`, `send_level` `20`,
 own structure implies.
 
 **Where:** `SEND_TARGET_VX` and `send_target_vx()` in
-`qumidi/protocol/registry.py`; consumed by `AsyncQuMixer._resolve_vx()` in
-`qumidi/client_async.py`. The table is a `dict[ChannelId, int]` precisely so
+`qumixer_py/protocol/registry.py`; consumed by `AsyncQuMixer._resolve_vx()` in
+`qumixer_py/client_async.py`. The table is a `dict[ChannelId, int]` precisely so
 that no call site can compute a target byte arithmetically from a mix index
 and silently walk into the `0E`–`0F` gap.
 
 ---
 
-## 14.2 — DCA Group Assign describes itself as "Mute Grp"
+## 2 — DCA Group Assign describes itself as "Mute Grp"
 
 **The spec says**, under the *DCA Grp Assign* heading, `Off Mute Grp 1-4 =
 00 to 03` — a copy-paste from the row above.
@@ -50,13 +48,13 @@ for on) and ignore the label. Only the wording is wrong.
 the general `0x40`-is-on convention used elsewhere; there is no plausible
 reading under which the DCA row's *values* are wrong too.
 
-**Where:** the `dca_assign` `ParamSpec` in `qumidi/protocol/registry.py`
+**Where:** the `dca_assign` `ParamSpec` in `qumixer_py/protocol/registry.py`
 (which carries this note inline), encoded by `FlaggedIndex.encode()` in
-`qumidi/protocol/params.py`.
+`qumixer_py/protocol/params.py`.
 
 ---
 
-## 14.3 — The meter block table's column headers are wrong
+## 3 — The meter block table's column headers are wrong
 
 **The spec says** the meter block table's first two columns are both headed
 "Qu-24".
@@ -68,11 +66,11 @@ reading under which the DCA row's *values* are wrong too.
 header says.
 
 **Where:** `QU16`, `QU24_AS_WRITTEN`, `QU32` and the `LAYOUTS` map in
-`qumidi/protocol/meters.py`.
+`qumixer_py/protocol/meters.py`.
 
 ---
 
-## 14.4 — Delay Time id `6C` collides with the Matrix channel id `6C`
+## 4 — Delay Time id `6C` collides with the Matrix channel id `6C`
 
 **The spec** uses `6C` for two unrelated things: the FX/channel *delay time*
 parameter id and the *Matrix 1-2* channel id.
@@ -84,7 +82,7 @@ but make it impossible to pass one where the other is expected.
 never occupy the same position) and dangerous in code, where both are small
 ints.
 
-**Where:** `ChannelId` in `qumidi/protocol/channels.py` is a frozen dataclass
+**Where:** `ChannelId` in `qumixer_py/protocol/channels.py` is a frozen dataclass
 and deliberately **not** an `int` subclass, so it cannot be passed where a
 parameter id (`ParamSpec.nrpn_id`, a plain `int`) is expected, nor the
 reverse. Parameters are addressed by *name* throughout the public API
@@ -94,7 +92,7 @@ need to be one.
 
 ---
 
-## 14.5 — `48` is both FX Delay coarse time and FX Delay Link
+## 5 — `48` is both FX Delay coarse time and FX Delay Link
 
 **The spec** assigns id `48` twice, discriminated only by `VX`: `05`/`07`
 (delay time, left/right tap) versus `06` (link).
@@ -107,16 +105,16 @@ was registered last, so half of all FX-delay traffic would be decoded as the
 wrong parameter with no error anywhere.
 
 **Where:** `Registry.register_exact()` and `Registry.resolve()` in
-`qumidi/protocol/registry.py`, plus the three `register_exact()` calls at the
+`qumixer_py/protocol/registry.py`, plus the three `register_exact()` calls at the
 bottom of that module that index `fx_delay_coarse` under `FX_TAP_LEFT`/
 `FX_TAP_RIGHT` and `fx_delay_link` under `FX_TAP_LINK`. The tap constants
-live at module level in `qumidi/protocol/params.py` (`FX_TAP_LEFT`,
+live at module level in `qumixer_py/protocol/params.py` (`FX_TAP_LEFT`,
 `FX_TAP_LINK`, `FX_TAP_RIGHT`) so the registry can reference them without
 instantiating `FxTap`.
 
 ---
 
-## 14.6 — Group level, pan and pre/post are conditional on console mode
+## 6 — Group level, pan and pre/post are conditional on console mode
 
 **The spec** documents these as ordinary parameters. They are accepted only
 when the console is in Mix mode; in Group mode the console silently ignores
@@ -132,12 +130,12 @@ that has never broadcast `5E` (it is not guaranteed to appear in the state
 push), and refusing a write on the strength of a value we may not have would
 be worse than sending it and reporting honestly that it was not confirmed.
 
-**Where:** the `group_mode` `ParamSpec` in `qumidi/protocol/registry.py`
+**Where:** the `group_mode` `ParamSpec` in `qumixer_py/protocol/registry.py`
 (`Direction.RX_ONLY`, `ChannelClass.GLOBAL`, `Tier.EXPERIMENTAL`); the
 GLOBAL-channel redirect in `AsyncQuMixer._ingest()` — which is what makes
 `5E` broadcasts on arbitrary `CH` bytes converge on one cache entry instead
 of scattering — and the diagnostic in `AsyncQuMixer._expire_expectation()`,
-both in `qumidi/client_async.py`.
+both in `qumixer_py/client_async.py`.
 
 **Known gap:** the spec's "warn when a group send parameter is set while in
 Group mode" is *not* implemented as a pre-write check. The signal a caller
@@ -146,7 +144,7 @@ gets is the post-hoc `write_unconfirmed` event. Read
 
 ---
 
-## 14.7 — MIDI strip numbers and channel ids overlap but are unrelated
+## 7 — MIDI strip numbers and channel ids overlap but are unrelated
 
 **The spec** presents strip key numbers (`00`–`5F` across Mute/Sel/PAFL) and
 input channel ids (`20`–`3F`) in the same document with no warning that they
@@ -155,7 +153,7 @@ and mean entirely different things.
 
 **We do** give strips their own type, `StripId`, which is not assignable to
 `ChannelId` — exactly as required for `ChannelId` versus parameter ids in
-14.4 — and route strip-channel traffic before it can reach the channel
+protocol note 4 — and route strip-channel traffic before it can reach the channel
 decoder at all.
 
 **Why:** a strip carries no channel identity (strip 5 sends `0x04` wherever
@@ -166,16 +164,16 @@ a strip-channel CC reach `NrpnDecoder.feed()` at all risks force-flushing a
 channel-`N` NRPN that is still mid-assembly, without its `VX`.
 
 **Where:** `StripId`, `Strip()` and `StripApi` in
-`qumidi/protocol/strips.py`; the early return at the top of
-`AsyncQuMixer._dispatch()` in `qumidi/client_async.py` (which fires *before*
+`qumixer_py/protocol/strips.py`; the early return at the top of
+`AsyncQuMixer._dispatch()` in `qumixer_py/client_async.py` (which fires *before*
 `self._decoder.feed(msg)`, not after); and the belt-and-braces MIDI-channel
 guard at the top of `AsyncQuMixer._ingest()`.
 
 ---
 
-## 14.8 — `mix_assign` (`55`) with `VX 07` duplicates `lr_assign` (`18`)
+## 8 — `mix_assign` (`55`) with `VX 07` duplicates `lr_assign` (`18`)
 
-**The spec**, once 14.1 is resolved, maps send target `07` to LR — which
+**The spec**, once note 1 is resolved, maps send target `07` to LR — which
 makes `55/07` a second, syntactically valid encoding of LR assignment
 alongside the dedicated `18`. Only one of them can be what the console
 listens to.
@@ -195,14 +193,14 @@ strand this client's own `lr_assign` write expectation into a spurious
 
 **Where:** the write refusal in `AsyncQuMixer._resolve_vx()` and the read
 normalisation in `AsyncQuMixer._ingest()`, both in
-`qumidi/client_async.py`; the `lr_assign` and `mix_assign` `ParamSpec`s in
-`qumidi/protocol/registry.py`. Regression tests:
+`qumixer_py/client_async.py`; the `lr_assign` and `mix_assign` `ParamSpec`s in
+`qumixer_py/protocol/registry.py`. Regression tests:
 `tests/test_state_sync.py::test_an_inbound_5507_normalises_onto_the_lr_assign_key`
 and `::test_an_inbound_mix_assign_to_a_real_mix_is_left_alone`.
 
 ---
 
-## 14.9 — Pan is not centred on `0x40`
+## 9 — Pan is not centred on `0x40`
 
 **The spec** gives pan as a 7-bit value, which invites the reflex reading of
 a bipolar parameter centred on `0x40`.
@@ -216,14 +214,14 @@ that treats pan as a signed offset from `0x40` is wrong by 27 steps at
 centre and pans **every channel hard left** — an error that is loud on stage
 and silent in a test suite that only round-trips its own assumption.
 
-**Where:** the `pan` `ParamSpec` in `qumidi/protocol/registry.py`, with the
+**Where:** the `pan` `ParamSpec` in `qumixer_py/protocol/registry.py`, with the
 reasoning in a comment directly above the domain. There is no separate
 "channel pan" parameter: a channel's LR pan is `pan` with `VX 07`, which is
-what `SendSource.pan` in `qumidi/model/channel.py` resolves to.
+what `SendSource.pan` in `qumixer_py/model/channel.py` resolves to.
 
 ---
 
-## 14.10 — Set-valued parameters carry their index in the *value*, not in `VX`
+## 10 — Set-valued parameters carry their index in the *value*, not in `VX`
 
 **The spec's** tables for DCA Group Assign and Mute Group Assign look like
 every other parameter's table, which invites keying the cache on
@@ -237,10 +235,10 @@ own cache slot.
 **Why:** the naive key collapses all four DCA memberships into one slot and
 loses three quarters of the information — assigning an input to DCA 2 would
 appear to clear its DCA 1 membership. This was a functional bug, not a
-documentation gap (PRD revision 1.1, item 1).
+documentation gap.
 
 **Where:** `FlaggedIndex` (`encode()`, `is_on()`, `sub_index_from_value()`)
-in `qumidi/protocol/params.py`; `sub_index_for()` in `qumidi/state.py`,
+in `qumixer_py/protocol/params.py`; `sub_index_for()` in `qumixer_py/state.py`,
 where the domain check deliberately takes priority over the `VxMode`
 dispatch; `StateCache.key()` and `MembershipSet` in the same module.
 `MembershipSet` also refuses to fabricate a set from partial knowledge: if
@@ -249,7 +247,7 @@ returning `{1}`.
 
 ---
 
-## 14.11 — The console's MIDI channel `N` can make `N+1` invalid
+## 11 — The console's MIDI channel `N` can make `N+1` invalid
 
 **The spec** does not address this at all: the MIDI-strip layer occupies
 channel `N+1`, which does not exist when `N = 15` (channel 16 on the
@@ -264,15 +262,15 @@ traffic on a MIDI channel a completely different device may own. Four bits
 cannot hold 16 either: a status byte of `0xB0 | 16` corrupts into a system
 message.
 
-**Where:** `AsyncQuMixer._on_state_reply()` in `qumidi/client_async.py`,
+**Where:** `AsyncQuMixer._on_state_reply()` in `qumixer_py/client_async.py`,
 which is the only place `StripApi` is ever constructed. The guard is
 airtight at a second, independent layer as well: `NoteOn`, `NoteOff` and
-`ControlChange.__post_init__` in `qumidi/midi/messages.py` reject any
+`ControlChange.__post_init__` in `qumixer_py/midi/messages.py` reject any
 channel above 15 outright.
 
 ---
 
-## 14.12 — The Qu-24 meter layout is inconsistent with the Qu-32 layout
+## 12 — The Qu-24 meter layout is inconsistent with the Qu-32 layout
 
 **The spec's** figures make a Qu-24 frame *larger* than a Qu-32 frame —
 830 meters against 790 — which cannot be right.
@@ -290,9 +288,9 @@ length does not match the computed layout disables metering with a
 diagnostic instead of being delivered.
 
 **Where:** `QU24_AS_WRITTEN`, `QU24_ALTERNATE` and `QU24_CANDIDATES` in
-`qumidi/protocol/meters.py`; the runtime length check in
-`MeterController._decode()` in `qumidi/meters.py` and in
-`MeterFrame.__init__()` in `qumidi/protocol/meters.py`;
+`qumixer_py/protocol/meters.py`; the runtime length check in
+`MeterController._decode()` in `qumixer_py/meters.py` and in
+`MeterFrame.__init__()` in `qumixer_py/protocol/meters.py`;
 `MeterController.set_layout()` for the user override.
 
 This is still open. It is the one erratum whose resolution needs a physical
@@ -300,7 +298,7 @@ Qu-24 — see the open questions in [tiers.md](tiers.md).
 
 ---
 
-## 14.13 — The scene recall path has no completion signal
+## 13 — The scene recall path has no completion signal
 
 **The spec** documents scene recall as a Program Change. Program Change is
 unacknowledged, and the console emits nothing to say a recall has finished.
@@ -314,8 +312,8 @@ protocol guarantee, and it is documented as one everywhere it is visible to
 a user. A recall of a large scene may need longer than 500 ms; the delay is
 a constructor argument for exactly that reason.
 
-**Where:** `AsyncQuMixer.recall_scene()` in `qumidi/client_async.py`;
-`SCENE_SETTLE_DELAY` in `qumidi/protocol/constants.py`. Note that
+**Where:** `AsyncQuMixer.recall_scene()` in `qumixer_py/client_async.py`;
+`SCENE_SETTLE_DELAY` in `qumixer_py/protocol/constants.py`. Note that
 `recall_scene()` does *not* call `sweep_names()` a second time — `resync()`
 → `_sync()` already sweeps unconditionally, and a second explicit sweep
 would silently double the cost of every recall.

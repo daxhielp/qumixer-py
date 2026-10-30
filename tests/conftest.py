@@ -8,21 +8,21 @@ from typing import Any
 
 import pytest
 
-from qumidi.client_async import AsyncQuMixer
-from qumidi.testing.fake_qu import FakeQu
+from qumixer_py.client_async import AsyncQuMixer
+from qumixer_py.testing.fake_qu import FakeQu
 
-#: PRD 16 acceptance criterion 15: the whole suite must also pass with the
+#: The whole suite must also pass with the
 #: console on a non-zero MIDI channel, not only the default 0. Both FakeQu
 #: fixtures below default to this rather than to FakeQu's own default of 0,
 #: so
 #:
-#:     QUMIDI_TEST_MIDI_CHANNEL=5 python -m pytest -m "not hardware"
+#:     QUMIXER_PY_TEST_MIDI_CHANNEL=5 python -m pytest -m "not hardware"
 #:
 #: exercises a non-zero N everywhere a test does not itself pin midi_channel
 #: (a test that passes midi_channel= explicitly -- e.g. to assert channel-16
 #: overflow behaviour -- still wins, since an explicit keyword always beats a
 #: fixture-supplied default).
-_DEFAULT_TEST_MIDI_CHANNEL = int(os.environ.get("QUMIDI_TEST_MIDI_CHANNEL", "0"))
+_DEFAULT_TEST_MIDI_CHANNEL = int(os.environ.get("QUMIXER_PY_TEST_MIDI_CHANNEL", "0"))
 
 # Test-only speed-up: AsyncQuMixer's default name_sweep_interval (20ms,
 # matching real hardware pacing) makes every test that connects a mixer pay a
@@ -33,7 +33,7 @@ _DEFAULT_TEST_MIDI_CHANNEL = int(os.environ.get("QUMIDI_TEST_MIDI_CHANNEL", "0")
 # passes name_sweep_interval=... (e.g. to assert the pacing itself) still
 # wins, since an explicit keyword argument always overrides a function's
 # default. Production behaviour (the real default read by library callers,
-# e.g. via `python -m qumidi.cli`) is untouched -- this only patches the
+# e.g. via `python -m qumixer_py.cli`) is untouched -- this only patches the
 # bound default on the class actually imported by the test process.
 assert AsyncQuMixer.__init__.__kwdefaults__ is not None
 AsyncQuMixer.__init__.__kwdefaults__["name_sweep_interval"] = 0.0
@@ -90,7 +90,7 @@ class _SyncFakeQu:
 
         Schedules FakeQu.send_surface_move onto this fixture's own loop
         thread and waits for it, the same way the sync facade itself
-        marshals writes onto its loop (PRD 11.2) -- send_surface_move is a
+        marshals writes onto its loop -- send_surface_move is a
         coroutine and this fixture's FakeQu lives on a thread with no
         running loop of the caller's own to await it from.
         """

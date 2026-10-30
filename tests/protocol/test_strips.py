@@ -2,11 +2,11 @@ import asyncio
 
 import pytest
 
-from qumidi.client_async import AsyncQuMixer
-from qumidi.errors import ParameterRangeError
-from qumidi.midi.nrpn import encode_nrpn
-from qumidi.protocol.channels import Input
-from qumidi.protocol.strips import Strip, StripId, StripKey
+from qumixer_py.client_async import AsyncQuMixer
+from qumixer_py.errors import ParameterRangeError
+from qumixer_py.midi.nrpn import encode_nrpn
+from qumixer_py.protocol.channels import Input
+from qumixer_py.protocol.strips import Strip, StripId, StripKey
 
 
 def test_strip_ids_are_one_based_and_zero_indexed_on_the_wire() -> None:
@@ -20,7 +20,7 @@ def test_strip_ids_are_one_based_and_zero_indexed_on_the_wire() -> None:
 
 
 def test_strip_id_is_not_a_channel_id() -> None:
-    # PRD 14.7: strip key numbers (0x00-0x5F) DO overlap input channel ids.
+    # strip key numbers (0x00-0x5F) DO overlap input channel ids.
     # They are different namespaces on different MIDI channels.
     assert not isinstance(Strip(1), type(Input(1)))
     assert not isinstance(Input(1), StripId)
@@ -72,7 +72,7 @@ async def test_bank_up_and_down(fake_qu_factory) -> None:  # type: ignore[no-unt
 
 
 async def test_midi_channel_16_disables_the_strip_api(fake_qu_factory, caplog) -> None:  # type: ignore[no-untyped-def]
-    # PRD 14.11: N+1 does not exist when the console is on MIDI channel 16.
+    # N+1 does not exist when the console is on MIDI channel 16.
     # Never emit a status byte of B0|16, which corrupts into a system message.
     fake = await fake_qu_factory(midi_channel=15)
     async with AsyncQuMixer("127.0.0.1", port=fake.port) as mixer:
@@ -83,7 +83,7 @@ async def test_midi_channel_16_disables_the_strip_api(fake_qu_factory, caplog) -
 
 
 async def test_strip_traffic_is_not_ingested_as_channel_state(fake_qu_factory) -> None:  # type: ignore[no-untyped-def]
-    # PRD 6.3: moving a strip emits no channel NRPN, and strip numbers overlap
+    # moving a strip emits no channel NRPN, and strip numbers overlap
     # channel ids numerically. Strip traffic must not touch the state cache.
     fake = await fake_qu_factory(midi_channel=0, scene={})
     seen: list[object] = []
@@ -99,8 +99,8 @@ async def test_strip_traffic_is_not_ingested_as_channel_state(fake_qu_factory) -
 async def test_interleaved_strip_traffic_does_not_corrupt_a_held_nrpn(
     fake_qu_factory,  # type: ignore[no-untyped-def]
 ) -> None:
-    # Regression for the _dispatch ordering fix (task-11.1): NrpnDecoder._held
-    # (qumidi/midi/nrpn.py) is a single instance attribute, not keyed by
+    # Regression for the _dispatch ordering fix: NrpnDecoder._held
+    # (qumixer_py/midi/nrpn.py) is a single instance attribute, not keyed by
     # channel. Every branch of feed() other than the Data-LSB match starts by
     # releasing whatever is currently held, with no VX, i.e. incomplete. If
     # strip traffic (channel N+1) is ever fed into the decoder while a
@@ -108,7 +108,7 @@ async def test_interleaved_strip_traffic_does_not_corrupt_a_held_nrpn(
     # premature, VX-less flush -- corrupting the in-flight channel-N NRPN
     # assembly. The fix routes N+1 traffic to StripApi._dispatch and returns
     # *before* decoder.feed() ever runs for it, so it can never disturb
-    # _held. This test fails under the brief's original ordering (route to
+    # _held. This test fails under the original ordering (route to
     # strips only after feed() has already run for every message) and
     # passes under the current one.
     fake = await fake_qu_factory(midi_channel=0, scene={})

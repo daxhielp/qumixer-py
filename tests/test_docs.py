@@ -1,4 +1,4 @@
-"""The documentation deliverables exist and are honest (PRD 17)."""
+"""The documentation deliverables exist and are honest."""
 
 from __future__ import annotations
 
@@ -29,7 +29,7 @@ def test_the_document_exists_and_is_not_a_stub(path) -> None:  # type: ignore[no
 
 
 def test_the_readme_carries_both_warnings_prominently() -> None:
-    # PRD 17 and 18: the single-TCP-connection caveat prominently placed, and
+    # the single-TCP-connection caveat prominently placed, and
     # the security statement said plainly.
     text = pathlib.Path("README.md").read_text()
     head = text[:2000]
@@ -39,11 +39,11 @@ def test_the_readme_carries_both_warnings_prominently() -> None:
 
 
 def test_the_library_offers_no_password_parameter() -> None:
-    # PRD 18: do not add a "password" parameter -- there is nothing to
+    # do not add a "password" parameter -- there is nothing to
     # authenticate against.
     import inspect
 
-    from qumidi.client_async import AsyncQuMixer
+    from qumixer_py.client_async import AsyncQuMixer
 
     params = inspect.signature(AsyncQuMixer.__init__).parameters
     assert not any("pass" in name or "auth" in name for name in params)
@@ -88,7 +88,7 @@ def test_every_example_runs_against_fake_qu(script, fake_qu_sync) -> None:  # ty
 
 
 def test_the_tier_table_matches_the_registry() -> None:
-    from qumidi.protocol.registry import REGISTRY
+    from qumixer_py.protocol.registry import REGISTRY
 
     text = pathlib.Path("docs/tiers.md").read_text()
     for spec in REGISTRY:
@@ -111,10 +111,24 @@ def test_the_tier_table_is_not_hand_edited_out_of_sync_with_the_registry() -> No
 
 
 def test_the_library_configures_no_logging_handlers() -> None:
-    # PRD 18: the library configures no handlers and never calls basicConfig.
-    for path in pathlib.Path("qumidi").rglob("*.py"):
+    # the library configures no handlers and never calls basicConfig.
+    for path in pathlib.Path("qumixer_py").rglob("*.py"):
         if path.name in ("cli.py", "fake_qu.py"):
             continue  # entry points may configure logging
         source = path.read_text()
         assert "basicConfig" not in source, path
         assert "addHandler" not in source, path
+
+
+def test_no_file_refers_to_an_external_requirements_document() -> None:
+    # The project is documented by what is in the repo; references to a
+    # planning document that is not shipped would dangle.
+    needle = "P" + "RD"
+    roots = [pathlib.Path(p) for p in ("qumixer_py", "tests", "tools", "examples", "docs")]
+    files = [pathlib.Path("README.md"), pathlib.Path("pyproject.toml")]
+    for root in roots:
+        files += [
+            p for p in root.rglob("*") if p.suffix in {".py", ".md", ".yaml", ".html", ".toml"}
+        ]
+    offenders = [str(p) for p in files if needle in p.read_text()]
+    assert not offenders, offenders

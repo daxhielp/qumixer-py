@@ -2,9 +2,9 @@ import asyncio
 
 import pytest
 
-from qumidi.midi.messages import SysEx
-from qumidi.midi.parser import MidiStreamParser
-from qumidi.protocol.sysex import get_system_state, parse_sysex
+from qumixer_py.midi.messages import SysEx
+from qumixer_py.midi.parser import MidiStreamParser
+from qumixer_py.protocol.sysex import get_system_state, parse_sysex
 
 
 async def read_qu_sysex(reader: asyncio.StreamReader, command: int, timeout: float = 2.0):
@@ -77,7 +77,7 @@ async def test_emits_active_sensing_on_connect(fake_qu) -> None:  # type: ignore
 
 
 async def test_refuses_a_second_connection(fake_qu) -> None:  # type: ignore[no-untyped-def]
-    # PRD 13.1: mirroring real behaviour, which tests must cover.
+    # mirroring real behaviour, which tests must cover.
     _r1, w1 = await asyncio.open_connection("127.0.0.1", fake_qu.port)
     try:
         r2, w2 = await asyncio.open_connection("127.0.0.1", fake_qu.port)
@@ -101,7 +101,7 @@ async def test_reports_the_configured_model(fake_qu_factory, model, box_id) -> N
 
 
 async def test_reports_a_non_zero_midi_channel(fake_qu_factory) -> None:  # type: ignore[no-untyped-def]
-    # PRD 16.15: the suite must pass with a non-zero N, not only the default.
+    # the suite must pass with a non-zero N, not only the default.
     fake = await fake_qu_factory(midi_channel=5)
     reader, writer = await asyncio.open_connection("127.0.0.1", fake.port)
     try:

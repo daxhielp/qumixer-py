@@ -2,10 +2,10 @@ import asyncio
 
 import pytest
 
-from qumidi.errors import QuConnectionError
-from qumidi.midi.messages import ControlChange, SystemRealtime
-from qumidi.transport.base import ConnectionState
-from qumidi.transport.tcp import TcpTransport
+from qumixer_py.errors import QuConnectionError
+from qumixer_py.midi.messages import ControlChange, SystemRealtime
+from qumixer_py.transport.base import ConnectionState
+from qumixer_py.transport.tcp import TcpTransport
 
 
 class Echo:
@@ -69,7 +69,7 @@ async def test_connect_to_a_closed_port_raises_qu_connection_error() -> None:
     t = TcpTransport("127.0.0.1", port=1, connect_timeout=0.5)
     with pytest.raises(QuConnectionError) as excinfo:
         await t.connect()
-    # PRD 4.2: the message must name the single-connection limit -- this is
+    # the message must name the single-connection limit -- this is
     # the number one user support question.
     assert "one" in str(excinfo.value).lower()
 
@@ -136,7 +136,7 @@ async def test_keepalive_is_emitted_on_the_configured_interval(echo) -> None:  #
 
 
 async def test_inbound_silence_declares_the_link_dead(echo) -> None:  # type: ignore[no-untyped-def]
-    # PRD 4.3: do not wait for the socket to notice.
+    # do not wait for the socket to notice.
     _server, port = echo
     states: list[ConnectionState] = []
     t = TcpTransport("127.0.0.1", port=port, keepalive_interval=0.05, inbound_timeout=0.2)

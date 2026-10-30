@@ -2,9 +2,9 @@ import json
 
 import pytest
 
-from qumidi.client_async import AsyncQuMixer
-from qumidi.layout import SurfaceMap
-from qumidi.protocol.channels import Dca, Input, Mix
+from qumixer_py.client_async import AsyncQuMixer
+from qumixer_py.layout import SurfaceMap
+from qumixer_py.protocol.channels import Dca, Input, Mix
 
 
 def test_lookup_in_both_directions() -> None:
@@ -34,7 +34,7 @@ def test_a_map_starts_valid_and_can_be_invalidated() -> None:
 
 
 def test_the_docstring_states_the_limitation() -> None:
-    # PRD 6.3: the docstring must state that the map is user-supplied, that
+    # the docstring must state that the map is user-supplied, that
     # the library cannot validate it, and that a scene recall can silently
     # invalidate it.
     doc = (SurfaceMap.__doc__ or "").lower()
@@ -47,7 +47,7 @@ def test_the_module_contains_no_protocol_involvement() -> None:
     import pathlib
     import re
 
-    source = pathlib.Path("qumidi/layout.py").read_text()
+    source = pathlib.Path("qumixer_py/layout.py").read_text()
     assert not re.search(r"0x[0-9A-Fa-f]{2}\b", source)
     assert "sysex" not in source.lower()
     assert "nrpn" not in source.lower()

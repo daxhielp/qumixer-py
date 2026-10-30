@@ -1,6 +1,6 @@
 import pytest
 
-from qumidi.midi.messages import (
+from qumixer_py.midi.messages import (
     ControlChange,
     NoteOff,
     NoteOn,

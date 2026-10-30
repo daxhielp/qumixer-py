@@ -1,6 +1,6 @@
 import asyncio
 
-from qumidi.cli import main
+from qumixer_py.cli import main
 
 
 async def test_dump_state_prints_the_synced_values(fake_qu_factory, capsys) -> None:  # type: ignore[no-untyped-def]

@@ -1,6 +1,6 @@
 # Golden vectors: expected wire bytes for registry parameters.
 #
-# TRANSCRIBED BY HAND FROM THE PRD SECTION 7.2 TABLES. Never regenerate this
+# TRANSCRIBED BY HAND FROM THE VENDOR SPEC'S PARAMETER TABLES. Never regenerate this
 # file from the registry -- a fixture generated from the code under test
 # proves nothing. Its purpose is to catch a wrong VX filler byte or a
 # transposed NRPN id, which produce messages the mixer silently ignores.
@@ -53,7 +53,7 @@
 
 - param: pan
   channel: 0x25
-  value: 0x25          # centre -- NOT 0x40 (PRD 14.9)
+  value: 0x25          # centre -- NOT 0x40
   vx: 0x07
   expected: "B0 63 25 B0 62 16 B0 06 25 B0 26 07"
 
@@ -216,7 +216,7 @@
 - param: geq_gain
   channel: 0x67
   value: 0x30
-  vx: 0x0F             # band 15 = 1 kHz (PRD 11.1)
+  vx: 0x0F             # band 15 = 1 kHz
   expected: "B0 63 67 B0 62 70 B0 06 30 B0 26 0F"
 
 - param: geq_gain
@@ -299,11 +299,11 @@
 
 - param: fx_delay_link
   channel: 0x00
-  value: 0x7F          # linked -- same id 48 again, VX 06 (PRD 14.5)
+  value: 0x7F          # linked -- same id 48 again, VX 06
   vx: null
   expected: "B0 63 00 B0 62 48 B0 06 7F B0 26 06"
 
-# --- Assigns (PRD 7.2, 14.2, 14.10). FlaggedIndex: eight values for both. ---
+# --- Assigns. FlaggedIndex: eight values for both. ---
 
 - param: dca_assign
   channel: 0x25
@@ -325,7 +325,7 @@
 
 - param: dca_assign
   channel: 0x25
-  value: 0x42          # on, group 3 -- the PRD 10.1a worked example
+  value: 0x42          # on, group 3 -- the set-valued worked example
   vx: null
   expected: "B0 63 25 B0 62 40 B0 06 42 B0 26 07"
 
@@ -359,11 +359,11 @@
   vx: null
   expected: "B0 63 25 B0 62 5C B0 06 43 B0 26 07"
 
-# --- Remaining registry rows: completeness (PRD 13.2). ---
+# --- Remaining registry rows: completeness. ---
 
 - param: group_mode
-  channel: 0x00        # PRD 7.2: no documented CH; 0x00 is what we send until
-  value: 0x01          # M6 records the real one. RX-only, so this vector
+  channel: 0x00        #: no documented CH; 0x00 is what we send until
+  value: 0x01          # a hardware run records the real one. RX-only, so this vector
   vx: null             # documents the decode shape, not a write we perform.
   expected: "B0 63 00 B0 62 5E B0 06 01 B0 26 00"
 

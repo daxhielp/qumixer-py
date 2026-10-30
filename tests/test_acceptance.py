@@ -1,6 +1,6 @@
-"""One entry per PRD 16 acceptance criterion, naming the test that covers it."""
+"""Each numbered requirement, naming the test that covers it."""
 
-CRITERIA = {
+REQUIREMENTS = {
     1: "tests/hardware/test_conformance.py::test_model_firmware_and_channel_are_detected",
     2: "tests/test_golden_vectors.py::test_golden_vector_parses_back_to_the_same_logical_value",
     3: "tests/test_echo.py::test_a_write_never_fires_external_change",
@@ -17,25 +17,25 @@ CRITERIA = {
     14: "tests/model/test_ramp.py::test_a_128_step_ramp_stays_within_the_send_rate",
     15: (
         "tests/conftest.py's fake_qu_factory/fake_qu_sync default midi_channel to "
-        "QUMIDI_TEST_MIDI_CHANNEL; `QUMIDI_TEST_MIDI_CHANNEL=5 python -m pytest "
+        "QUMIXER_PY_TEST_MIDI_CHANNEL; `QUMIXER_PY_TEST_MIDI_CHANNEL=5 python -m pytest "
         '-m "not hardware"` runs the whole suite against a non-zero N'
     ),
     16: "tests/transport/test_reconnect.py::test_close_during_backoff_does_not_resurrect_the_connection",
 }
 
 
-def test_every_criterion_names_a_real_test() -> None:
+def test_every_requirement_names_a_real_test() -> None:
     import pathlib
 
-    for number, ref in CRITERIA.items():
+    for number, ref in REQUIREMENTS.items():
         if "::" not in ref:
             continue
         path, _, name = ref.partition("::")
-        assert pathlib.Path(path).exists(), f"criterion {number}: {path} does not exist"
+        assert pathlib.Path(path).exists(), f"requirement {number}: {path} does not exist"
         source = pathlib.Path(path).read_text()
-        assert f"def {name}" in source, f"criterion {number}: {name} not found in {path}"
+        assert f"def {name}" in source, f"requirement {number}: {name} not found in {path}"
 
 
-def test_every_prd_16_criterion_is_present() -> None:
-    # 16 numbered acceptance criteria in PRD 16, none skipped.
-    assert set(CRITERIA) == set(range(1, 17))
+def test_every_requirement_is_present() -> None:
+    # 16 numbered requirements, none skipped.
+    assert set(REQUIREMENTS) == set(range(1, 17))

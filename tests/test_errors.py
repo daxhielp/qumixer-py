@@ -1,4 +1,4 @@
-from qumidi import errors
+from qumixer_py import errors
 
 
 def test_every_exception_derives_from_qu_error() -> None:
