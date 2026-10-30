@@ -10,3 +10,9 @@ venv/
 htmlcov/
 dist/
 build/
+
+# Local hardware-suite output (console state dumps) and tooling
+qu-hardware-snapshot-*
+.hypothesis/
+.superpowers/
+.coverage*

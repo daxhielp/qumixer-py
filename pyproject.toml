@@ -3,26 +3,41 @@ requires = ["setuptools>=61"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "qumidi"
-version = "0.1.0.dev0"
+name = "qumixer-py"
+version = "0.1.0"
 description = "Python control library for Allen & Heath Qu series mixers"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
+authors = [{ name = "daxhielp", email = "daxperugorria@gmail.com" }]
+keywords = ["allen-heath", "qu", "mixer", "midi", "nrpn", "audio", "tcp", "asyncio"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Multimedia :: Sound/Audio :: MIDI",
+    "Typing :: Typed",
+]
 dependencies = []
 
 [project.optional-dependencies]
-dev = ["pytest>=7", "pytest-asyncio>=0.23", "pytest-cov", "hypothesis", "mypy", "ruff", "build"]
+dev = ["pytest>=7", "pytest-asyncio>=0.23", "pytest-cov", "hypothesis", "mypy", "ruff", "build", "twine"]
 usb = ["mido", "python-rtmidi"]
 
 [project.scripts]
-qumidi = "qumidi.cli:main"
+qumixer-py = "qumixer_py.cli:main"
 
 [tool.setuptools.packages.find]
-include = ["qumidi*"]
+include = ["qumixer_py*"]
 
 [tool.setuptools.package-data]
-qumidi = ["py.typed"]
+qumixer_py = ["py.typed"]
 
 [tool.ruff]
 line-length = 100
@@ -35,9 +50,13 @@ warn_unreachable = true
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+# tests/ is a namespace package; putting the repo root on sys.path makes
+# `from tests.hardware... import ...` work under a bare `pytest` as well as
+# `python -m pytest` (which only gets it from the cwd).
+pythonpath = ["."]
 markers = ["hardware: requires a physical Qu mixer (deselect with '-m \"not hardware\"')"]
 filterwarnings = ["error"]
-# Coverage is measured on every run (protocol/midi/state.py -- PRD 13.6), but
+# Coverage is measured on every run (protocol/midi/state.py --), but
 # --cov-fail-under is deliberately NOT set here: baked into addopts it would
 # apply to every invocation, including a focused `pytest tests/test_foo.py`
 # during normal development, which obviously can't exercise 90% of these
@@ -47,7 +66,7 @@ filterwarnings = ["error"]
 # which is what the release gate runs:
 #
 #   python -m pytest -m "not hardware" --cov-fail-under=90
-addopts = "--cov=qumidi.protocol --cov=qumidi.midi --cov=qumidi.state"
+addopts = "--cov=qumixer_py.protocol --cov=qumixer_py.midi --cov=qumixer_py.state"
 
 [tool.coverage.report]
 exclude_lines = ["pragma: no cover", "if TYPE_CHECKING:", "\\.\\.\\."]
